@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <OutputType>Library</OutputType>
+    <!-- Keep the built DLL directly under bin/Debug, not bin/Debug/net471. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- We reference the game's DLLs; do not copy them next to our output. -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+
+    <!-- EDIT THIS to your Mac's game install if it differs. -->
+    <GameManagedDir>$(HOME)/Library/Application Support/Steam/steamapps/common/OxygenNotIncluded/OxygenNotIncluded.app/Contents/Resources/Data/Managed</GameManagedDir>
+
+    <!-- Where the game loads in-development mods from. -->
+    <ModsDevRoot>$(HOME)/Library/Application Support/unity.Klei.Oxygen Not Included/mods/Dev</ModsDevRoot>
+    <ModInstallDir>$(ModsDevRoot)/PlateCounterflowHeatExchanger</ModInstallDir>
+  </PropertyGroup>
+
+  <!-- net471 reference assemblies are not present on macOS; NuGet supplies them.
+       PrivateAssets=all means this is build-only and never shipped. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Compile against the game. Private=false = "Copy Local off": we link against
+       these but ship only our own DLL. -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameManagedDir)/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(GameManagedDir)/Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameManagedDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameManagedDir)/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameManagedDir)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- After a successful build, drop the DLL and both yaml files into the game's
+       Dev mods folder. Only runs if that folder exists, so it is a no-op on this
+       workspace and active on your Mac. -->
+  <Target Name="InstallMod" AfterTargets="Build" Condition="Exists('$(ModsDevRoot)')">
+    <MakeDir Directories="$(ModInstallDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModInstallDir)" />
+    <Copy SourceFiles="mod_info.yaml;mod.yaml" DestinationFolder="$(ModInstallDir)" />
+    <Message Importance="high" Text="Installed mod to $(ModInstallDir)" />
+  </Target>
+
+</Project>
