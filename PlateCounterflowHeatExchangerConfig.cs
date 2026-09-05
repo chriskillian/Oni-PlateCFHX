@@ -30,7 +30,7 @@ namespace PlateCounterflowHeatExchanger
                 100,                            // hit points
                 60f,                            // construction time (seconds)
                 BUILDINGS.CONSTRUCTION_MASS_KG.TIER5,
-                MATERIALS.ALL_METALS,           // built from any metal
+                MATERIALS.REFINED_METALS,       // refined metal only (like the aquatuner)
                 2400f,                          // melting point (K)
                 BuildLocationRule.OnFloor,
                 decor: BUILDINGS.DECOR.NONE,
@@ -55,9 +55,9 @@ namespace PlateCounterflowHeatExchanger
 
         public override void ConfigureBuildingTemplate(GameObject go, Tag prefab_tag)
         {
-            // No Storage/ConduitConsumer/ConduitDispenser: both streams are driven manually
-            // by HeatExchangerCore through private float buffers. See that class for why a
-            // real Storage would fight ONI's own thermal sim.
+            // No Storage/ConduitConsumer/ConduitDispenser: both streams are moved cell-to-cell
+            // by HeatExchangerCore in the same stateless way ConduitBridge does, so nothing is
+            // ever held inside the building. See that class for the reasoning.
         }
 
         // The secondary ports (stream B) declare themselves through ISecondaryInput/

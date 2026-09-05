@@ -2,12 +2,11 @@ using UnityEngine;
 
 namespace PlateCounterflowHeatExchanger
 {
-    // A tiny value type holding one stream's in-flight fluid between pull and push.
-    // Kept as a float buffer (never a real Storage) on purpose: a Storage is a physical
-    // object ONI's own thermal sim would conduct heat into and out of, which would fight
-    // and double-count the energy balance we compute in C#. A float buffer is invisible
-    // to that sim, so the thermal math (added in 3b) is entirely ours.
-    public struct LiquidBuffer
+    // One tick's planned transfer on one stream: the fluid that WILL move from the input
+    // cell to the output cell this tick. It is a plan, not storage. Nothing is held between
+    // ticks, so there is no state to serialize, no invisible mass, and no double-counting
+    // against ONI's own thermal sim. Mirrors ConduitBridge, which also holds nothing.
+    public struct Packet
     {
         public SimHashes Element;
         public float Mass;
@@ -16,40 +15,25 @@ namespace PlateCounterflowHeatExchanger
         public int DiseaseCount;
 
         public bool IsEmpty => Mass <= 0f;
-
-        public void Fill(ConduitFlow.ConduitContents c)
-        {
-            Element = c.element;
-            Mass = c.mass;
-            Temperature = c.temperature;
-            DiseaseIdx = c.diseaseIdx;
-            DiseaseCount = c.diseaseCount;
-        }
-
-        // Remove what the output pipe accepted; back-pressure leaves the rest for next tick.
-        public void Drain(float amount)
-        {
-            Mass -= amount;
-            if (Mass <= 0.0001f)
-            {
-                Mass = 0f;
-                Element = SimHashes.Vacuum;
-            }
-        }
     }
 
-    // The device core. Drives both liquid streams by hand and, from 3b on, exchanges heat
-    // between them (counterflow, ε-NTU, effectiveness set by the construction material's
-    // thermal conductivity). The two buffers never share mass; a counterflow exchanger
-    // trades heat, not fluid.
+    // The device core. Drives both liquid streams by hand and exchanges heat between them
+    // (counterflow, ε-NTU, effectiveness set by the construction material's thermal
+    // conductivity). The two streams never share mass; a counterflow exchanger trades heat,
+    // not fluid.
+    //
+    // Flow follows the vanilla ConduitBridge pattern: read the input packet, add to the
+    // output, then remove from the input only what the output accepted. We add one step the
+    // bridge does not need. Because the heat math has to know the mass that really moves,
+    // we predict the output's acceptance first (same rule ConduitFlow.AddElement applies:
+    // element must match or the cell must be empty, capped by free space under MaxMass),
+    // exchange heat between the two predicted packets, then commit both.
     //
     // Stream A rides the building's PRIMARY conduit ports (from the def's
-    // Utility{Input,Output}Offset); we read/write those cells manually now instead of via
+    // Utility{Input,Output}Offset); we read/write those cells manually instead of via
     // ConduitConsumer/Dispenser/Storage. Stream B rides two SECONDARY ports this component
     // declares (ISecondaryInput/ISecondaryOutput → icons + placement validation) and
     // registers with the liquid network itself.
-    //
-    // 3a: pure passthrough. No heat yet. The seam for the exchange is marked in ConduitUpdate.
     public class HeatExchangerCore : KMonoBehaviour, ISecondaryInput, ISecondaryOutput
     {
         // Stream B (secondary) offsets, set by the config before spawn. Stream A's offsets
@@ -58,7 +42,6 @@ namespace PlateCounterflowHeatExchanger
         public CellOffset secondaryOutputOffset;
 
         private const ConduitType Type = ConduitType.Liquid;
-        private const float BufferCapacityKg = 10f; // one liquid packet's worth
 
         // The single calibration knob for effectiveness. G = k * footprintArea * PackingFactor,
         // so this folds in plate count and plate thickness (a real plate exchanger packs far
@@ -66,8 +49,16 @@ namespace PlateCounterflowHeatExchanger
         // effectiveness so a good conductor lands high and a poor one clearly lower.
         private const float PackingFactor = 150f;
 
+        // KMonoBehaviour fills [MyCmpReq] fields by reflection at spawn, so the compiler
+        // cannot see the assignment and warns CS0649. Silence it for this field only.
+#pragma warning disable CS0649
         [MyCmpReq]
         private Building building;
+#pragma warning restore CS0649
+
+        // Per-cell pipe capacity. ConduitFlow keeps its working copy in a private field, but
+        // publishes the per-type values as public constants; ours is liquid, fixed above.
+        private const float MaxMass = ConduitFlow.MAX_LIQUID_MASS;
 
         // Stream A primary cells (from the def; already network endpoints).
         private int primaryInputCell;
@@ -79,13 +70,15 @@ namespace PlateCounterflowHeatExchanger
         private FlowUtilityNetwork.NetworkItem secondaryInputItem;
         private FlowUtilityNetwork.NetworkItem secondaryOutputItem;
 
-        private LiquidBuffer bufferA;
-        private LiquidBuffer bufferB;
-
         // G, the exchanger's overall conductance (energy per second per kelvin), cached at
         // spawn from the construction material's thermal conductivity.
         private float conductance;
-        private bool loggedFirstTick;
+
+        // Diagnostic logging for calibration: every LogEveryTicks conduit ticks (1 s each),
+        // dump the exchange numbers to Player.log. Flip DebugLog to false for release.
+        private const bool DebugLog = true;
+        private const int LogEveryTicks = 30;
+        private int exchangeTicks;
 
         protected override void OnSpawn()
         {
@@ -95,9 +88,8 @@ namespace PlateCounterflowHeatExchanger
             // side may attach a ConduitDispenser). We drive both primary cells by hand, so
             // those components have no Storage to feed and would NRE in Consume on the first
             // packet. Remove them. The def's port icons and network endpoints stay — they
-            // come from the def, not these components (same as the Advanced-Electrolyzer's
-            // manual output). If stream A stops receiving fluid after this, the input
-            // endpoint was actually the consumer's and we register it manually instead.
+            // come from the def, not these components (same as ConduitBridge, which also
+            // never registers its own endpoints).
             RemoveIfPresent<ConduitConsumer>();
             RemoveIfPresent<ConduitDispenser>();
 
@@ -126,7 +118,10 @@ namespace PlateCounterflowHeatExchanger
             float footprintArea = building.Def.WidthInCells * building.Def.HeightInCells;
             conductance = k * footprintArea * PackingFactor;
 
-            // Drive flow in phase with the liquid conduit simulation.
+            // Drive flow in phase with the liquid conduit simulation. Note the conduit sim
+            // ticks once per SECOND (ConduitFlow.TickRate), not every 200 ms; the solver
+            // moves pipe mass first, then calls updaters like this one with dt = 1.0.
+            // Whatever we add to an output cell here is carried away by NEXT tick's solve.
             Conduit.GetFlowManager(Type).AddConduitUpdater(ConduitUpdate);
         }
 
@@ -152,56 +147,97 @@ namespace PlateCounterflowHeatExchanger
         {
             ConduitFlow flow = Conduit.GetFlowManager(Type);
 
-            PullInput(flow, primaryInputCell, ref bufferA);
-            PullInput(flow, secondaryInputCell, ref bufferB);
+            // 1. Plan: what will actually move on each stream this tick, given the input's
+            //    contents and the output's free capacity. Each stream is planned on its own.
+            Packet a = PlanTransfer(flow, primaryInputCell, primaryOutputCell);
+            Packet b = PlanTransfer(flow, secondaryInputCell, secondaryOutputCell);
 
-            // Both inlet packets are now buffered. Trade heat between them before pushing.
-            ExchangeHeat(dt);
+            // 2. Exchange: trade heat between the two moving packets. If either stream is
+            //    stalled this tick, the other passes through unchanged, like a bridge; an
+            //    exchanger with one side stopped is just a pipe.
+            if (!a.IsEmpty && !b.IsEmpty)
+            {
+                ExchangeHeat(dt, ref a, ref b);
+            }
 
-            PushOutput(flow, primaryOutputCell, ref bufferA);
-            PushOutput(flow, secondaryOutputCell, ref bufferB);
+            // 3. Commit, bridge-style: add to output, then remove from input what was taken.
+            Commit(flow, primaryInputCell, primaryOutputCell, a);
+            Commit(flow, secondaryInputCell, secondaryOutputCell, b);
         }
 
-        // Pull one packet into the buffer only when it is empty: keeps the buffer to a
-        // single element, so there is no in-buffer temperature blending to reason about.
-        private static void PullInput(ConduitFlow flow, int inCell, ref LiquidBuffer buf)
+        // Predict this tick's transfer on one stream by applying ConduitFlow.AddElement's own
+        // acceptance rule ahead of time. Returns an empty Packet when nothing will move.
+        private static Packet PlanTransfer(ConduitFlow flow, int inCell, int outCell)
         {
-            if (!buf.IsEmpty)
+            Packet p = default;
+            if (!flow.HasConduit(inCell) || !flow.HasConduit(outCell))
             {
-                return;
+                return p;
             }
-            ConduitFlow.ConduitContents c = flow.GetContents(inCell);
-            if (c.mass > 0f)
+
+            ConduitFlow.ConduitContents src = flow.GetContents(inCell);
+            if (src.mass <= 0f)
             {
-                float pull = Mathf.Min(BufferCapacityKg, c.mass);
-                buf.Fill(flow.RemoveElement(inCell, pull));
+                return p;
             }
+
+            // AddElement refuses a different element unless the output cell is empty.
+            ConduitFlow.ConduitContents dst = flow.GetContents(outCell);
+            if (dst.element != src.element && dst.element != SimHashes.Vacuum)
+            {
+                return p;
+            }
+
+            // AddElement caps at the output cell's free space (ConduitContents.GetEffectiveCapacity).
+            float mass = Mathf.Min(src.mass, MaxMass - dst.mass);
+            if (mass <= 0f)
+            {
+                return p;
+            }
+
+            p.Element = src.element;
+            p.Mass = mass;
+            p.Temperature = src.temperature;
+            p.DiseaseIdx = src.diseaseIdx;
+            // Disease rides along in proportion to the mass moved (same as ConduitBridge).
+            p.DiseaseCount = (int)(mass / src.mass * src.diseaseCount);
+            return p;
         }
 
-        // Push the buffer out, honoring back-pressure and skipping when no output pipe.
-        private static void PushOutput(ConduitFlow flow, int outCell, ref LiquidBuffer buf)
+        // Move the planned packet: add to the output at its (possibly changed) temperature,
+        // then remove the accepted mass from the input. Because PlanTransfer mirrored the
+        // acceptance rule, accepted should equal p.Mass; a shortfall means our prediction and
+        // the game's rule disagree, which would leak energy, so log it loudly.
+        private static void Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
         {
-            if (buf.IsEmpty || !flow.HasConduit(outCell))
+            if (p.IsEmpty)
             {
                 return;
             }
             float accepted = flow.AddElement(
-                outCell, buf.Element, buf.Mass, buf.Temperature, buf.DiseaseIdx, buf.DiseaseCount);
-            buf.Drain(accepted);
+                outCell, p.Element, p.Mass, p.Temperature, p.DiseaseIdx, p.DiseaseCount);
+            if (accepted > 0f)
+            {
+                flow.RemoveElement(inCell, accepted);
+            }
+            if (accepted < p.Mass - 0.001f)
+            {
+                Debug.LogWarning($"[PCHX] acceptance mismatch: planned {p.Mass:F3} kg, output took {accepted:F3} kg");
+            }
         }
 
-        // Counterflow heat exchange between the two buffers for one tick, by the ε-NTU
-        // method. Trades heat, never mass; only the buffer temperatures change. Disease and
-        // element are untouched. No exchange unless both streams carry fluid this tick.
-        private void ExchangeHeat(float dt)
+        // Counterflow heat exchange between the two moving packets for one tick, by the
+        // ε-NTU method. Trades heat, never mass; only the packet temperatures change. Disease
+        // and element are untouched.
+        private void ExchangeHeat(float dt, ref Packet a, ref Packet b)
         {
-            if (bufferA.IsEmpty || bufferB.IsEmpty || conductance <= 0f)
+            if (conductance <= 0f)
             {
                 return;
             }
 
-            Element elemA = ElementLoader.FindElementByHash(bufferA.Element);
-            Element elemB = ElementLoader.FindElementByHash(bufferB.Element);
+            Element elemA = ElementLoader.FindElementByHash(a.Element);
+            Element elemB = ElementLoader.FindElementByHash(b.Element);
             if (elemA == null || elemB == null)
             {
                 return;
@@ -210,8 +246,8 @@ namespace PlateCounterflowHeatExchanger
             // Heat-capacity rate of each stream this tick (energy per kelvin). Mass is in kg
             // but the game's specific heat is per gram, so convert to keep units consistent
             // with the conductance G.
-            float cA = bufferA.Mass * 1000f * elemA.specificHeatCapacity;
-            float cB = bufferB.Mass * 1000f * elemB.specificHeatCapacity;
+            float cA = a.Mass * 1000f * elemA.specificHeatCapacity;
+            float cB = b.Mass * 1000f * elemB.specificHeatCapacity;
             if (cA <= 0f || cB <= 0f)
             {
                 return;
@@ -236,27 +272,33 @@ namespace PlateCounterflowHeatExchanger
             }
             eps = Mathf.Clamp01(eps);
 
-            float tHot = Mathf.Max(bufferA.Temperature, bufferB.Temperature);
-            float tCold = Mathf.Min(bufferA.Temperature, bufferB.Temperature);
+            float tHot = Mathf.Max(a.Temperature, b.Temperature);
+            float tCold = Mathf.Min(a.Temperature, b.Temperature);
             float q = eps * cMin * (tHot - tCold); // energy moved hot -> cold, >= 0
 
+            float aIn = a.Temperature;
+            float bIn = b.Temperature;
+
             // Apply equal-and-opposite energy: what the hot stream loses, the cold gains.
-            if (bufferA.Temperature >= bufferB.Temperature)
+            if (a.Temperature >= b.Temperature)
             {
-                bufferA.Temperature -= q / cA;
-                bufferB.Temperature += q / cB;
+                a.Temperature -= q / cA;
+                b.Temperature += q / cB;
             }
             else
             {
-                bufferA.Temperature += q / cA;
-                bufferB.Temperature -= q / cB;
+                a.Temperature += q / cA;
+                b.Temperature -= q / cB;
             }
 
-            if (!loggedFirstTick)
+            // Periodic sample, not just the first tick: the first packets through a freshly
+            // filled pipe are usually partial, so they say little about full-flow behavior.
+            if (DebugLog && exchangeTicks++ % LogEveryTicks == 0)
             {
-                loggedFirstTick = true;
-                Debug.Log($"[PCHX] first exchange: dt={dt:F3}s conductance={conductance:F1} " +
-                          $"cMin={cMin:F1} NTU={ntu:F3} Cr={cr:F3} eps={eps:F3}");
+                Debug.Log($"[PCHX] exchange #{exchangeTicks}: dt={dt:F3}s G={conductance:F0} " +
+                          $"A={a.Mass:F2}kg {a.Element} {aIn:F1}K->{a.Temperature:F1}K " +
+                          $"B={b.Mass:F2}kg {b.Element} {bIn:F1}K->{b.Temperature:F1}K " +
+                          $"cMin={cMin:F0} NTU={ntu:F3} Cr={cr:F3} eps={eps:F3} Q={q:F0}J");
             }
         }
 
