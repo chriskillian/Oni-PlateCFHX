@@ -1,4 +1,3 @@
-supportedContent: ALL
-minimumSupportedBuild: 509629
-version: 0.1.0.0
-APIVersion: 2
+title: "Plate Counterflow Heat Exchanger"
+description: "A passive 3x3 plate counterflow heat exchanger with dual fluid streams and duplicant-cleared fouling."
+staticID: "PlateCounterflowHeatExchanger"

@@ -11,6 +11,15 @@ namespace PlateCounterflowHeatExchanger
         // One canonical id. Strings, the plan-menu entry, and the prefab all key off it.
         public const string ID = "PlateCounterflowHeatExchanger";
 
+        // The single source of truth for all four port cells. x is centered: for a 3-wide
+        // building valid x offsets are -1, 0, +1; y is bottom-origin (0..height-1). Stream A
+        // (primary) runs along the bottom row left->right; stream B (secondary) runs along
+        // the top row right->left, so the two flow counter to each other.
+        public static readonly CellOffset PrimaryInput = new CellOffset(-1, 0);   // bottom-left
+        public static readonly CellOffset PrimaryOutput = new CellOffset(1, 0);   // bottom-right
+        public static readonly CellOffset SecondaryInput = new CellOffset(1, 2);  // top-right
+        public static readonly CellOffset SecondaryOutput = new CellOffset(-1, 2); // top-left
+
         public override BuildingDef CreateBuildingDef()
         {
             BuildingDef def = BuildingTemplates.CreateBuildingDef(
@@ -27,14 +36,13 @@ namespace PlateCounterflowHeatExchanger
                 decor: BUILDINGS.DECOR.NONE,
                 noise: NOISE_POLLUTION.NONE);
 
-            // Stream A, the one vanilla-supported liquid stream for this increment.
-            // x is centered: for a 3-wide building, valid x offsets are -1, 0, +1.
-            // Input bottom-left (-1,0), output bottom-right (1,0). Stream B will use
-            // the top row later: input (-1,2), output (1,2).
+            // Stream A's primary ports. Setting these on the def creates the port icons
+            // and network endpoints for free; we drive the flow through them by hand in
+            // HeatExchangerCore, so no ConduitConsumer/Dispenser is attached.
             def.InputConduitType = ConduitType.Liquid;
             def.OutputConduitType = ConduitType.Liquid;
-            def.UtilityInputOffset = new CellOffset(-1, 0);
-            def.UtilityOutputOffset = new CellOffset(1, 0);
+            def.UtilityInputOffset = PrimaryInput;
+            def.UtilityOutputOffset = PrimaryOutput;
 
             def.Floodable = false;
             def.Overheatable = false;           // a heat exchanger is meant to run hot
@@ -47,38 +55,44 @@ namespace PlateCounterflowHeatExchanger
 
         public override void ConfigureBuildingTemplate(GameObject go, Tag prefab_tag)
         {
-            // A small liquid buffer the consumer fills and the dispenser empties.
-            Storage storage = BuildingTemplates.CreateDefaultStorage(go);
-            storage.allowItemRemoval = false;
-            storage.storageFilters = STORAGEFILTERS.LIQUIDS;
-            storage.capacityKg = 100f;
-            storage.SetDefaultStoredItemModifiers(GasReservoirConfig.ReservoirStoredItemModifiers);
+            // No Storage/ConduitConsumer/ConduitDispenser: both streams are driven manually
+            // by HeatExchangerCore through private float buffers. See that class for why a
+            // real Storage would fight ONI's own thermal sim.
+        }
 
-            // Pulls liquid from the input pipe into the storage above.
-            ConduitConsumer consumer = go.AddOrGet<ConduitConsumer>();
-            consumer.conduitType = ConduitType.Liquid;
-            consumer.ignoreMinMassCheck = true;
-            consumer.forceAlwaysSatisfied = true;
-            consumer.alwaysConsume = true;
-            consumer.capacityKG = storage.capacityKg;
+        // The secondary ports (stream B) declare themselves through ISecondaryInput/
+        // ISecondaryOutput. On the finished building HeatExchangerCore implements those;
+        // during placement and construction it does not exist yet, so attach lightweight
+        // marker components there so the port icons still show. (This mirrors GasFilter.)
+        private void AttachSecondaryPorts(GameObject go)
+        {
+            go.AddComponent<ConduitSecondaryInput>().portInfo =
+                new ConduitPortInfo(ConduitType.Liquid, SecondaryInput);
+            go.AddComponent<ConduitSecondaryOutput>().portInfo =
+                new ConduitPortInfo(ConduitType.Liquid, SecondaryOutput);
+        }
 
-            // Pushes whatever is in storage back out the output pipe (any element).
-            ConduitDispenser dispenser = go.AddOrGet<ConduitDispenser>();
-            dispenser.conduitType = ConduitType.Liquid;
-            dispenser.elementFilter = null;
+        public override void DoPostConfigurePreview(BuildingDef def, GameObject go)
+        {
+            base.DoPostConfigurePreview(def, go);
+            AttachSecondaryPorts(go);
+        }
+
+        public override void DoPostConfigureUnderConstruction(GameObject go)
+        {
+            base.DoPostConfigureUnderConstruction(go);
+            AttachSecondaryPorts(go);
         }
 
         public override void DoPostConfigureComplete(GameObject go)
         {
-            // Coordinates the storage/consumer/dispenser lifecycle for stream A.
-            go.AddOrGetDef<StorageController.Def>();
             go.GetComponent<KPrefabID>().AddTag(GameTags.OverlayBehindConduits);
 
-            // Stream B: a second liquid input+output driven manually, ports on the top row.
-            SecondaryLiquidStream streamB = go.AddOrGet<SecondaryLiquidStream>();
-            streamB.inputOffset = new CellOffset(1, 2);    // top-right
-            streamB.outputOffset = new CellOffset(-1, 2);  // top-left
-            // Thermal and fouling components arrive in later steps.
+            // Drives both streams and (from 3b) exchanges heat between them.
+            HeatExchangerCore core = go.AddOrGet<HeatExchangerCore>();
+            core.secondaryInputOffset = SecondaryInput;
+            core.secondaryOutputOffset = SecondaryOutput;
+            // Fouling/cleaning components arrive in later steps.
         }
     }
 }
