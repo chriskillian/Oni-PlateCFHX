@@ -11,10 +11,8 @@ namespace PlateCounterflowHeatExchanger
         // One canonical id. Strings, the plan-menu entry, and the prefab all key off it.
         public const string ID = "PlateCounterflowHeatExchanger";
 
-        // The single source of truth for all four port cells. x is centered: for a 3-wide
-        // building valid x offsets are -1, 0, +1; y is bottom-origin (0..height-1). Stream A
-        // (primary) runs along the bottom row left->right; stream B (secondary) runs along
-        // the top row right->left, so the two flow counter to each other.
+        // The single source of truth for all four port cells (README, "Geometry and ports").
+        // x is centered (-1, 0, +1 for a 3-wide building); y is bottom-origin.
         public static readonly CellOffset PrimaryInput = new CellOffset(-1, 0);   // bottom-left
         public static readonly CellOffset PrimaryOutput = new CellOffset(1, 0);   // bottom-right
         public static readonly CellOffset SecondaryInput = new CellOffset(1, 2);  // top-right
@@ -29,10 +27,8 @@ namespace PlateCounterflowHeatExchanger
                 "metalrefinery_kanim",          // borrowed art (drawn for 3x4; looks tall for now)
                 100,                            // hit points
                 60f,                            // construction time (seconds)
-                // Parallel arrays: one mass per material. Refined metal for the plates plus
-                // gaskets to seal the pack (the Steam Turbine uses the same pairing, with 4
-                // gaskets for a 5x3 footprint; 2 fits our 3x3). Gaskets also research-gate
-                // the building behind Improved Plumbing, since that is where they unlock.
+                // Parallel arrays: one mass per material tag (same form as SteamTurbineConfig2).
+                // Why refined metal + gaskets: README, "Build menu, research, and recipe".
                 new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f },
                 new string[] { "RefinedMetal", "BuildingGasket" },
                 2400f,                          // melting point (K)
@@ -92,11 +88,14 @@ namespace PlateCounterflowHeatExchanger
         {
             go.GetComponent<KPrefabID>().AddTag(GameTags.OverlayBehindConduits);
 
-            // Drives both streams and (from 3b) exchanges heat between them.
+            // Drives both streams, exchanges heat between them, and keeps the fouling ledgers.
             HeatExchangerCore core = go.AddOrGet<HeatExchangerCore>();
             core.secondaryInputOffset = SecondaryInput;
             core.secondaryOutputOffset = SecondaryOutput;
-            // Fouling/cleaning components arrive in later steps.
+
+            // The cleaning errand: user-menu button, automatic trigger, and the duplicant
+            // work that empties the ledgers into debris.
+            go.AddOrGet<FoulingCleanWorkable>();
         }
     }
 }

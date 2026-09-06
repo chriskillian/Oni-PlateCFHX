@@ -1,0 +1,231 @@
+using System.Collections.Generic;
+using KSerialization;
+using UnityEngine;
+
+namespace PlateCounterflowHeatExchanger
+{
+    // The cleaning job: a duplicant opens the plate pack and the deposits drop as solid
+    // chunks. Behavior and reasoning: README.md, "Cleaning".
+    //
+    // Shape follows vanilla DropAllWorkable ("Empty Storage"): a Workable that owns at most
+    // one chore, a user-menu button that toggles it, a status item while the order is
+    // pending, and a saved flag so the order survives a reload (the Chore object itself
+    // never does; OnSpawn recreates it from the flag).
+    [SerializationConfig(MemberSerialization.OptIn)]
+    public class FoulingCleanWorkable : Workable, ISim1000ms
+    {
+        // Fouling fraction at which a cleaning chore is raised automatically (rising edge
+        // only; see autoArmed).
+        public const float AutoCleanThreshold = 0.5f;
+
+        // Base work time in seconds; duplicant attributes scale it.
+        private const float CleanWorkTime = 30f;
+
+        // Deposits lighter than this are not worth a debris chunk.
+        private const float MinChunkMass = 0.001f;
+
+        // Saved: an order is pending. The chore is rebuilt from this on load.
+        [Serialize]
+        private bool markedForClean;
+
+        // Saved: the automatic trigger may fire when fouling next crosses the threshold.
+        // Disarmed when it fires; re-armed by a completed clean.
+        [Serialize]
+        private bool autoArmed = true;
+
+        private Chore chore;
+        private System.Guid orderedStatus;
+        private bool showButton;
+
+        // Workables want a Prioritizable so the player can set the errand's priority.
+        // [MyCmpAdd] adds the component to the prefab if it is missing; the field exists
+        // only to carry the attribute (CS0169 "never used"). core is filled by reflection
+        // (CS0649 "never assigned"), as in HeatExchangerCore.
+#pragma warning disable CS0169, CS0649
+        [MyCmpAdd]
+        private Prioritizable prioritizable;
+
+        [MyCmpReq]
+        private HeatExchangerCore core;
+#pragma warning restore CS0169, CS0649
+
+        // The user-menu hook, wired as a static delegate the way vanilla does so the event
+        // system can dispatch without allocating per instance. 493375141 is the game's
+        // hash for OnRefreshUserMenu.
+        private static readonly EventSystem.IntraObjectHandler<FoulingCleanWorkable> OnRefreshUserMenuDelegate =
+            new EventSystem.IntraObjectHandler<FoulingCleanWorkable>((component, data) => component.OnRefreshUserMenu(data));
+
+        private Chore Chore
+        {
+            get => chore;
+            set
+            {
+                chore = value;
+                markedForClean = chore != null;
+            }
+        }
+
+        protected FoulingCleanWorkable()
+        {
+            // Standard approach cells for a building the duplicant works on from outside.
+            SetOffsetTable(OffsetGroups.InvertedStandardTable);
+        }
+
+        protected override void OnPrefabInit()
+        {
+            base.OnPrefabInit();
+            Subscribe(493375141, OnRefreshUserMenuDelegate);
+            // Text shown over the duplicant while working. If DuplicantStatusItems.Cleaning
+            // is missing on this game version, Emptying is a known-good fallback.
+            workerStatusItem = Db.Get().DuplicantStatusItems.Cleaning;
+            synchronizeAnims = false; // borrowed building art has no matching work anim
+            SetWorkTime(CleanWorkTime);
+            Prioritizable.AddRef(gameObject);
+        }
+
+        protected override void OnSpawn()
+        {
+            base.OnSpawn();
+            showButton = ShouldShowButton();
+            if (markedForClean)
+            {
+                // Reload with an order pending: recreate the chore the save could not hold.
+                markedForClean = false;
+                OrderClean();
+            }
+        }
+
+        // ---- Ordering ----
+
+        // Toggle, like Empty Storage: no chore -> create one; chore -> cancel it.
+        private void ToggleClean()
+        {
+            if (Chore == null)
+            {
+                OrderClean();
+            }
+            else
+            {
+                CancelClean();
+            }
+        }
+
+        public void OrderClean()
+        {
+            if (Chore != null) return;
+            if (DebugHandler.InstantBuildMode)
+            {
+                OnCompleteWork(null);
+                return;
+            }
+            // EmptyStorage is the closest vanilla chore type (a Tidying errand, no skill
+            // gate). only_when_operational: false because a passive building has no
+            // operational state to wait on.
+            Chore = new WorkChore<FoulingCleanWorkable>(
+                Db.Get().ChoreTypes.EmptyStorage, this, null,
+                run_until_complete: true, null, null, null,
+                allow_in_red_alert: true, null,
+                ignore_schedule_block: false, only_when_operational: false);
+            RefreshStatusItem();
+            RefreshButton();
+        }
+
+        private void CancelClean()
+        {
+            if (Chore == null) return;
+            Chore.Cancel("Cleaning cancelled");
+            Chore = null;
+            GetComponent<KSelectable>().RemoveStatusItem(workerStatusItem);
+            ShowProgressBar(show: false);
+            RefreshStatusItem();
+            RefreshButton();
+        }
+
+        // Automatic trigger, checked once a second.
+        public void Sim1000ms(float dt)
+        {
+            float f = core.FoulingFraction();
+            if (autoArmed && Chore == null && f >= AutoCleanThreshold)
+            {
+                autoArmed = false;
+                OrderClean();
+            }
+            RefreshButton();
+        }
+
+        // ---- Work lifecycle ----
+
+        protected override void OnStartWork(WorkerBase worker)
+        {
+            base.OnStartWork(worker);
+            core.FlowBlocked = true;
+        }
+
+        protected override void OnStopWork(WorkerBase worker)
+        {
+            base.OnStopWork(worker);
+            core.FlowBlocked = false;
+        }
+
+        protected override void OnCompleteWork(WorkerBase worker)
+        {
+            base.OnCompleteWork(worker);
+            core.FlowBlocked = false;
+
+            // Deposits become debris at the building's temperature, one chunk per material.
+            float temperature = GetComponent<PrimaryElement>().Temperature;
+            Vector3 position = Grid.CellToPosCCC(Grid.PosToCell(this), Grid.SceneLayer.Ore);
+            foreach (KeyValuePair<SimHashes, float> kv in core.TakeDeposits())
+            {
+                if (kv.Value < MinChunkMass) continue;
+                Element element = ElementLoader.FindElementByHash(kv.Key);
+                if (element == null) continue;
+                element.substance.SpawnResource(position, kv.Value, temperature, byte.MaxValue, 0);
+            }
+
+            autoArmed = true;
+            Chore = null;
+            RefreshStatusItem();
+            RefreshButton();
+        }
+
+        // ---- UI ----
+
+        private void OnRefreshUserMenu(object data)
+        {
+            if (!showButton) return;
+            KIconButtonMenu.ButtonInfo button = Chore == null
+                ? new KIconButtonMenu.ButtonInfo("action_empty_contents", PCHXStrings.CleanButton, ToggleClean,
+                    Action.NumActions, null, null, null, PCHXStrings.CleanButtonTooltip)
+                : new KIconButtonMenu.ButtonInfo("action_empty_contents", PCHXStrings.CancelCleanButton, ToggleClean,
+                    Action.NumActions, null, null, null, PCHXStrings.CancelCleanButtonTooltip);
+            Game.Instance.userMenu.AddButton(gameObject, button);
+        }
+
+        // Offer the button once there is something to clean, or while an order is pending.
+        private bool ShouldShowButton() => Chore != null || core.DepositMass() >= MinChunkMass;
+
+        private void RefreshButton()
+        {
+            bool show = ShouldShowButton();
+            if (show != showButton)
+            {
+                showButton = show;
+                Game.Instance.userMenu.Refresh(gameObject);
+            }
+        }
+
+        private void RefreshStatusItem()
+        {
+            KSelectable selectable = GetComponent<KSelectable>();
+            if (Chore != null && orderedStatus == System.Guid.Empty)
+            {
+                orderedStatus = selectable.AddStatusItem(PCHXStatusItems.CleaningOrdered);
+            }
+            else if (Chore == null && orderedStatus != System.Guid.Empty)
+            {
+                orderedStatus = selectable.RemoveStatusItem(orderedStatus);
+            }
+        }
+    }
+}

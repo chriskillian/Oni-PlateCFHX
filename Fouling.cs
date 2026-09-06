@@ -22,34 +22,20 @@ namespace PlateCounterflowHeatExchanger
         }
     }
 
-    // The fouling model: an asymptotic (Kern-Seaton style) balance between deposition,
-    // which grows with throughput, and shear removal, which grows with throughput squared.
-    // Because removal outpaces deposition as flow rises, the deposit levels off, and levels
-    // off LOWER at high flow. Running the exchanger full open keeps it cleaner; throttling
-    // for higher effectiveness costs fouling.
-    //
-    // Deposits are tracked as MASS per byproduct element (the saved state). Thermal
-    // resistance is derived from mass, so mass is the single source of truth and cleaning
-    // can hand the exact deposit back as solid chunks.
+    // Asymptotic (Kern-Seaton style) fouling: deposition grows with throughput, shear removal
+    // with throughput squared, so the deposit levels off. State is MASS per byproduct
+    // element; thermal resistance is derived from mass. Model, pacing history, and the
+    // deliberate choices behind Apply: README.md, "Fouling model".
     public static class Fouling
     {
-        // ---- Tuning knobs (see the design notes; start values, refine from the log) ----
+        // ---- Tuning knobs ----
 
-        // Thermal resistance added per kilogram of deposit, K/W. Copper's clean resistance
-        // is about 1.2e-5 K/W, so ~1.2 kg of deposit halves a copper exchanger's conductance.
-        // The same kilogram costs a thermium exchanger a larger share: fouling resistance
-        // is a property of the deposit, not the wall, exactly as in real exchangers.
+        // Thermal resistance added per kilogram of deposit, K/W. A property of the deposit,
+        // not the wall, so the same kilogram costs a high-k exchanger a larger share.
         public const float ResistancePerKg = 1e-5f;
 
-        // Removal time constant at full flow, seconds. At full flow the deposit relaxes
-        // toward its asymptote with this time constant.
-        //
-        // Pacing note (2026-09-06): asymptotic deposit = deposition rate x time constant, so
-        // scaling every DepositionRate UP and this constant DOWN by the same factor speeds
-        // the whole system up without moving any equilibrium. First test ran at 1800 s with
-        // rates a third of the current ones: physically sane but a throttled brine loop took
-        // ~41 cycles to reach 50% fouling. Factor 3 applied: one cycle here, throttled brine
-        // now reaches 50% in ~19 cycles, full-flow brine still settles near 27% at a 322 K wall.
+        // Removal time constant at full flow, seconds. Deposition rates and this constant
+        // were scaled together by 3 for pacing; equilibria are unchanged (README, "Pacing").
         public const float RemovalTimeConstant = 600f;
 
         // Flow that counts as "full" for the shear term: one full liquid packet per tick.
@@ -68,17 +54,11 @@ namespace PlateCounterflowHeatExchanger
         private static float Coking(float t) => Mathf.Pow(2f, (t - 373f) / 25f);
 
         // Fluids not listed here do not foul (Water, Ethanol, and anything unexpected).
-        //
-        // TODO (DLC fluids): the table covers base-game liquids only. DLC liquids need
-        // entries and byproducts: Mucin (Aquatic Planet Pack; SimHashes.Mucus / SolidMucus)
-        // will certainly foul; Naphtha, Resin, Nectar, and Phyto Oil are candidates.
-        // Confirmed 2026-09-06: SimHashes carries DLC (and even unused, e.g. SolidPropane)
-        // members regardless of enabled DLCs, so unconditional entries compile and are inert
-        // when the element never flows. Runtime check still owed: ElementLoader lookup of a
-        // disabled-DLC hash must not throw in Fouling.Apply's callers.
+        // Base-game liquids only; DLC fluids are a README to-do. SimHashes carries DLC
+        // members regardless of enabled DLCs, so unconditional entries compile.
         private static readonly Dictionary<SimHashes, FoulingSpec> Table = new Dictionary<SimHashes, FoulingSpec>
         {
-            // Rates are kg deposit per kg fluid at f(T) = 1 (x3 pacing applied, see above).
+            // Rates are kg deposit per kg fluid at f(T) = 1.
             { SimHashes.DirtyWater, new FoulingSpec(1.5e-4f, Biological, SimHashes.Dirt) },
             { SimHashes.SaltWater,  new FoulingSpec(6e-5f,   Scaling,    SimHashes.Salt) },
             { SimHashes.Brine,      new FoulingSpec(2.1e-4f, Scaling,    SimHashes.Salt) },
@@ -111,9 +91,12 @@ namespace PlateCounterflowHeatExchanger
 
         // Apply one tick of fouling for a moving packet. Adjusts the ledger and the packet's
         // mass so that mass is conserved: what deposits leaves the fluid, and what shear
-        // strips off returns to it (salt redissolving into brine, dirt into polluted water).
-        // The packet can never grow past its planned capacity, so the output cell still
-        // accepts it in full.
+        // strips off returns to it as the flowing element. The packet can never grow past
+        // its planned capacity, so the output cell still accepts it in full.
+        //
+        // Deliberate, not oversights (README, "Deliberate choices"): shear scours only the
+        // flowing fluid's own byproduct; fluids with no table entry return early and so
+        // never scour (a fouled exchanger cannot be flushed); returned mass joins the fluid.
         public static void Apply(ref Packet p, Dictionary<SimHashes, float> ledger, float wallTemperature, float dt)
         {
             if (p.IsEmpty || !TryGetSpec(p.Element, out FoulingSpec spec))

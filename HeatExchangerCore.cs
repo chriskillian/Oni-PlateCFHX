@@ -21,28 +21,20 @@ namespace PlateCounterflowHeatExchanger
         public bool IsEmpty => Mass <= 0f;
     }
 
-    // The device core. Drives both liquid streams by hand and exchanges heat between them
-    // (counterflow, ε-NTU, effectiveness set by the construction material's thermal
-    // conductivity). The two streams never share mass; a counterflow exchanger trades heat,
-    // not fluid.
+    // The device core: drives both liquid streams by hand, fouls, and exchanges heat between
+    // them. Design and model: README.md, "Flow model" and "Thermal model".
     //
-    // Flow follows the vanilla ConduitBridge pattern: read the input packet, add to the
-    // output, then remove from the input only what the output accepted. We add one step the
-    // bridge does not need. Because the heat math has to know the mass that really moves,
-    // we predict the output's acceptance first (same rule ConduitFlow.AddElement applies:
-    // element must match or the cell must be empty, capped by free space under MaxMass),
-    // exchange heat between the two predicted packets, then commit both.
+    // Flow follows vanilla ConduitBridge (read input, add to output, remove what was
+    // accepted) plus one step the bridge does not need: the heat math must know the mass
+    // that really moves, so acceptance is predicted first by mirroring ConduitFlow.AddElement's
+    // rule, heat is exchanged between the two predicted packets, then both are committed.
     //
-    // Stream A rides the building's PRIMARY conduit ports (from the def's
-    // Utility{Input,Output}Offset); we read/write those cells manually instead of via
-    // ConduitConsumer/Dispenser/Storage. Stream B rides two SECONDARY ports this component
-    // declares (ISecondaryInput/ISecondaryOutput → icons + placement validation) and
-    // registers with the liquid network itself.
+    // Stream A uses the def's primary ports; stream B uses secondary ports this component
+    // declares (ISecondaryInput/ISecondaryOutput) and registers with the network itself.
     //
-    // Persistence: the fouling ledgers are the only state that must survive a save. Klei's
-    // serializer is OPT-IN: the class attribute below says "save nothing unless marked", and
-    // each [Serialize] field is what gets written. Everything else (cells, endpoints, the
-    // cached clean conductance) is rebuilt in OnSpawn from the building itself.
+    // Klei's serializer is OPT-IN: the attribute below says "save nothing unless marked",
+    // and the [Serialize] ledgers are the only saved state. Everything else is rebuilt in
+    // OnSpawn from the building.
     [SerializationConfig(MemberSerialization.OptIn)]
     public class HeatExchangerCore : KMonoBehaviour, ISecondaryInput, ISecondaryOutput
     {
@@ -53,17 +45,8 @@ namespace PlateCounterflowHeatExchanger
 
         private const ConduitType Type = ConduitType.Liquid;
 
-        // The single calibration knob for effectiveness. G = k * footprintArea * PackingFactor,
-        // so this folds in plate count and plate thickness (a real plate exchanger packs far
-        // more transfer area than its footprint).
-        //
-        // Calibrated 2026-09-05 at 150 and verified in-game (copper, 10 kg/s brine vs
-        // 10 kg/s water: NTU 2.38, eps 0.75, outlet temps matched by hand). Predicted eps
-        // for balanced water/water at a full 10 kg/s, refined metals only:
-        //   thermium 0.88, aluminum 0.87, copper/gold/tungsten 0.66, iron/steel 0.64, lead 0.53.
-        // Dropping to 100 stretches that to roughly aluminum 0.82 / lead 0.43. Effectiveness
-        // rises toward 1 for every material as flow drops, so throttling with a valve is the
-        // player's lever; material matters most at full throughput.
+        // The single calibration knob for effectiveness: G_clean = k * footprintArea * this.
+        // Value, per-metal predictions, and the alternative of 100: README.md, "Calibration".
         private const float PackingFactor = 150f;
 
         // KMonoBehaviour fills [MyCmpReq] fields by reflection at spawn, so the compiler
@@ -103,6 +86,14 @@ namespace PlateCounterflowHeatExchanger
         private const bool DebugLog = true;
         private const int LogEveryTicks = 30;
         private int exchangeTicks;
+
+        // Set by FoulingCleanWorkable while a duplicant has the plate pack open. While true
+        // the updater plans nothing, so both input pipes back up exactly as they would
+        // behind a closed valve. Not saved: a reloaded chore re-raises it when work resumes.
+        public bool FlowBlocked { get; set; }
+
+        // Handle for the always-on "Fouling: N%" status item.
+        private System.Guid foulingStatus;
 
         protected override void OnSpawn()
         {
@@ -151,10 +142,15 @@ namespace PlateCounterflowHeatExchanger
             // moves pipe mass first, then calls updaters like this one with dt = 1.0.
             // Whatever we add to an output cell here is carried away by NEXT tick's solve.
             Conduit.GetFlowManager(Type).AddConduitUpdater(ConduitUpdate);
+
+            // The fouling readout. We pass ourselves as the item's data so its string
+            // callbacks can read the live ledgers each time the panel refreshes.
+            foulingStatus = GetComponent<KSelectable>().AddStatusItem(PCHXStatusItems.Fouling, this);
         }
 
         protected override void OnCleanUp()
         {
+            GetComponent<KSelectable>().RemoveStatusItem(foulingStatus);
             Conduit.GetFlowManager(Type).RemoveConduitUpdater(ConduitUpdate);
             IUtilityNetworkMgr mgr = Conduit.GetNetworkManager(Type);
             mgr.RemoveFromNetworks(secondaryInputCell, secondaryInputItem, true);
@@ -173,6 +169,12 @@ namespace PlateCounterflowHeatExchanger
 
         private void ConduitUpdate(float dt)
         {
+            // Plate pack open for cleaning: nothing moves on either stream this tick.
+            if (FlowBlocked)
+            {
+                return;
+            }
+
             ConduitFlow flow = Conduit.GetFlowManager(Type);
 
             // 1. Plan: what will actually move on each stream this tick, given the input's
@@ -217,11 +219,54 @@ namespace PlateCounterflowHeatExchanger
         }
 
         // Fraction of total resistance that is deposit: 0 = clean, 0.5 = conductance halved.
-        // This is the number the player will eventually see.
+        // This is the number the player sees in the status item.
         public float FoulingFraction()
         {
             if (cleanConductance <= 0f) return 0f;
             return 1f - ActualConductance() / cleanConductance;
+        }
+
+        public float DepositMass() => Fouling.TotalMass(depositA) + Fouling.TotalMass(depositB);
+
+        // Empty both ledgers and hand back the deposits merged by byproduct, so the cleaner
+        // can drop one chunk per material. Mass leaves the ledgers here and reappears as
+        // debris in the caller; nothing is created or lost.
+        public Dictionary<SimHashes, float> TakeDeposits()
+        {
+            var taken = new Dictionary<SimHashes, float>();
+            MergeInto(taken, depositA);
+            MergeInto(taken, depositB);
+            depositA.Clear();
+            depositB.Clear();
+            return taken;
+        }
+
+        private static void MergeInto(Dictionary<SimHashes, float> into, Dictionary<SimHashes, float> from)
+        {
+            foreach (KeyValuePair<SimHashes, float> kv in from)
+            {
+                into.TryGetValue(kv.Key, out float have);
+                into[kv.Key] = have + kv.Value;
+            }
+        }
+
+        // One line per stream for the status tooltip, e.g. "Stream A: 0.3 kg Salt".
+        public string DescribeDeposits()
+        {
+            return "Stream A (bottom): " + Describe(depositA) + "\nStream B (top): " + Describe(depositB);
+        }
+
+        private static string Describe(Dictionary<SimHashes, float> ledger)
+        {
+            var parts = new List<string>();
+            foreach (KeyValuePair<SimHashes, float> kv in ledger)
+            {
+                if (kv.Value < 0.001f) continue;
+                Element e = ElementLoader.FindElementByHash(kv.Key);
+                string name = e != null ? e.name : kv.Key.ToString();
+                parts.Add(GameUtil.GetFormattedMass(kv.Value) + " " + name);
+            }
+            return parts.Count == 0 ? "clean" : string.Join(", ", parts);
         }
 
         // Predict this tick's transfer on one stream by applying ConduitFlow.AddElement's own
