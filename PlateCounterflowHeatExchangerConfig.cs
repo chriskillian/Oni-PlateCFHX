@@ -29,8 +29,12 @@ namespace PlateCounterflowHeatExchanger
                 "metalrefinery_kanim",          // borrowed art (drawn for 3x4; looks tall for now)
                 100,                            // hit points
                 60f,                            // construction time (seconds)
-                BUILDINGS.CONSTRUCTION_MASS_KG.TIER5,
-                MATERIALS.REFINED_METALS,       // refined metal only (like the aquatuner)
+                // Parallel arrays: one mass per material. Refined metal for the plates plus
+                // gaskets to seal the pack (the Steam Turbine uses the same pairing, with 4
+                // gaskets for a 5x3 footprint; 2 fits our 3x3). Gaskets also research-gate
+                // the building behind Improved Plumbing, since that is where they unlock.
+                new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f },
+                new string[] { "RefinedMetal", "BuildingGasket" },
                 2400f,                          // melting point (K)
                 BuildLocationRule.OnFloor,
                 decor: BUILDINGS.DECOR.NONE,

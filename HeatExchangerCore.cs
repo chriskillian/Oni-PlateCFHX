@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using KSerialization;
 using UnityEngine;
 
 namespace PlateCounterflowHeatExchanger
@@ -9,7 +11,9 @@ namespace PlateCounterflowHeatExchanger
     public struct Packet
     {
         public SimHashes Element;
-        public float Mass;
+        public float Mass;        // what will be pushed to the output (after fouling adjusts it)
+        public float SourceMass;  // what will be removed from the input (the planned amount)
+        public float Capacity;    // free room in the output cell; Mass may never exceed this
         public float Temperature;
         public byte DiseaseIdx;
         public int DiseaseCount;
@@ -34,6 +38,12 @@ namespace PlateCounterflowHeatExchanger
     // ConduitConsumer/Dispenser/Storage. Stream B rides two SECONDARY ports this component
     // declares (ISecondaryInput/ISecondaryOutput → icons + placement validation) and
     // registers with the liquid network itself.
+    //
+    // Persistence: the fouling ledgers are the only state that must survive a save. Klei's
+    // serializer is OPT-IN: the class attribute below says "save nothing unless marked", and
+    // each [Serialize] field is what gets written. Everything else (cells, endpoints, the
+    // cached clean conductance) is rebuilt in OnSpawn from the building itself.
+    [SerializationConfig(MemberSerialization.OptIn)]
     public class HeatExchangerCore : KMonoBehaviour, ISecondaryInput, ISecondaryOutput
     {
         // Stream B (secondary) offsets, set by the config before spawn. Stream A's offsets
@@ -45,8 +55,15 @@ namespace PlateCounterflowHeatExchanger
 
         // The single calibration knob for effectiveness. G = k * footprintArea * PackingFactor,
         // so this folds in plate count and plate thickness (a real plate exchanger packs far
-        // more transfer area than its footprint). Tune from the logged dt and observed
-        // effectiveness so a good conductor lands high and a poor one clearly lower.
+        // more transfer area than its footprint).
+        //
+        // Calibrated 2026-09-05 at 150 and verified in-game (copper, 10 kg/s brine vs
+        // 10 kg/s water: NTU 2.38, eps 0.75, outlet temps matched by hand). Predicted eps
+        // for balanced water/water at a full 10 kg/s, refined metals only:
+        //   thermium 0.88, aluminum 0.87, copper/gold/tungsten 0.66, iron/steel 0.64, lead 0.53.
+        // Dropping to 100 stretches that to roughly aluminum 0.82 / lead 0.43. Effectiveness
+        // rises toward 1 for every material as flow drops, so throttling with a valve is the
+        // player's lever; material matters most at full throughput.
         private const float PackingFactor = 150f;
 
         // KMonoBehaviour fills [MyCmpReq] fields by reflection at spawn, so the compiler
@@ -70,9 +87,16 @@ namespace PlateCounterflowHeatExchanger
         private FlowUtilityNetwork.NetworkItem secondaryInputItem;
         private FlowUtilityNetwork.NetworkItem secondaryOutputItem;
 
-        // G, the exchanger's overall conductance (energy per second per kelvin), cached at
-        // spawn from the construction material's thermal conductivity.
-        private float conductance;
+        // G_clean, the conductance of the bare plates (W/K), cached at spawn from the
+        // construction material's thermal conductivity. Fouling adds resistance in series.
+        private float cleanConductance;
+
+        // Fouling ledgers: kilograms of deposit per byproduct element, one per stream side.
+        // SAVED. Thermal resistance is derived from these each tick (Fouling.ResistanceOf).
+        [Serialize]
+        private Dictionary<SimHashes, float> depositA = new Dictionary<SimHashes, float>();
+        [Serialize]
+        private Dictionary<SimHashes, float> depositB = new Dictionary<SimHashes, float>();
 
         // Diagnostic logging for calibration: every LogEveryTicks conduit ticks (1 s each),
         // dump the exchange numbers to Player.log. Flip DebugLog to false for release.
@@ -116,7 +140,11 @@ namespace PlateCounterflowHeatExchanger
             PrimaryElement construction = GetComponent<PrimaryElement>();
             float k = construction != null ? construction.Element.thermalConductivity : 0f;
             float footprintArea = building.Def.WidthInCells * building.Def.HeightInCells;
-            conductance = k * footprintArea * PackingFactor;
+            cleanConductance = k * footprintArea * PackingFactor;
+
+            // Older saves (or a serializer that skipped the field) leave a ledger null.
+            depositA = depositA ?? new Dictionary<SimHashes, float>();
+            depositB = depositB ?? new Dictionary<SimHashes, float>();
 
             // Drive flow in phase with the liquid conduit simulation. Note the conduit sim
             // ticks once per SECOND (ConduitFlow.TickRate), not every 200 ms; the solver
@@ -152,17 +180,48 @@ namespace PlateCounterflowHeatExchanger
             Packet a = PlanTransfer(flow, primaryInputCell, primaryOutputCell);
             Packet b = PlanTransfer(flow, secondaryInputCell, secondaryOutputCell);
 
-            // 2. Exchange: trade heat between the two moving packets. If either stream is
-            //    stalled this tick, the other passes through unchanged, like a bridge; an
-            //    exchanger with one side stopped is just a pipe.
+            // 2. Foul: each moving packet deposits on (or scours) its side of the plates.
+            //    The wall sits between the streams, so its temperature is estimated as the
+            //    mean of both inlets when both flow, or the single inlet otherwise.
+            float wall = WallTemperature(a, b);
+            Fouling.Apply(ref a, depositA, wall, dt);
+            Fouling.Apply(ref b, depositB, wall, dt);
+
+            // 3. Exchange: trade heat between the two moving packets through the fouled
+            //    wall. If either stream is stalled this tick, the other passes through
+            //    unchanged, like a bridge; an exchanger with one side stopped is just a pipe.
             if (!a.IsEmpty && !b.IsEmpty)
             {
-                ExchangeHeat(dt, ref a, ref b);
+                ExchangeHeat(dt, ref a, ref b, ActualConductance());
             }
 
-            // 3. Commit, bridge-style: add to output, then remove from input what was taken.
+            // 4. Commit, bridge-style: add to output, then remove the planned mass from input.
             Commit(flow, primaryInputCell, primaryOutputCell, a);
             Commit(flow, secondaryInputCell, secondaryOutputCell, b);
+        }
+
+        private static float WallTemperature(Packet a, Packet b)
+        {
+            if (!a.IsEmpty && !b.IsEmpty) return 0.5f * (a.Temperature + b.Temperature);
+            if (!a.IsEmpty) return a.Temperature;
+            return b.Temperature;
+        }
+
+        // Clean wall and both deposits are thermal resistances in series:
+        //   1/G_actual = 1/G_clean + R_fA + R_fB
+        private float ActualConductance()
+        {
+            if (cleanConductance <= 0f) return 0f;
+            float r = 1f / cleanConductance + Fouling.ResistanceOf(depositA) + Fouling.ResistanceOf(depositB);
+            return 1f / r;
+        }
+
+        // Fraction of total resistance that is deposit: 0 = clean, 0.5 = conductance halved.
+        // This is the number the player will eventually see.
+        public float FoulingFraction()
+        {
+            if (cleanConductance <= 0f) return 0f;
+            return 1f - ActualConductance() / cleanConductance;
         }
 
         // Predict this tick's transfer on one stream by applying ConduitFlow.AddElement's own
@@ -189,7 +248,8 @@ namespace PlateCounterflowHeatExchanger
             }
 
             // AddElement caps at the output cell's free space (ConduitContents.GetEffectiveCapacity).
-            float mass = Mathf.Min(src.mass, MaxMass - dst.mass);
+            float capacity = MaxMass - dst.mass;
+            float mass = Mathf.Min(src.mass, capacity);
             if (mass <= 0f)
             {
                 return p;
@@ -197,6 +257,8 @@ namespace PlateCounterflowHeatExchanger
 
             p.Element = src.element;
             p.Mass = mass;
+            p.SourceMass = mass;
+            p.Capacity = capacity;
             p.Temperature = src.temperature;
             p.DiseaseIdx = src.diseaseIdx;
             // Disease rides along in proportion to the mass moved (same as ConduitBridge).
@@ -204,10 +266,11 @@ namespace PlateCounterflowHeatExchanger
             return p;
         }
 
-        // Move the planned packet: add to the output at its (possibly changed) temperature,
-        // then remove the accepted mass from the input. Because PlanTransfer mirrored the
-        // acceptance rule, accepted should equal p.Mass; a shortfall means our prediction and
-        // the game's rule disagree, which would leak energy, so log it loudly.
+        // Move the planned packet: add to the output at its (possibly changed) temperature
+        // and mass, then remove the PLANNED mass from the input. The two differ by whatever
+        // fouling deposited or returned, so mass is conserved across fluid + deposit.
+        // Because PlanTransfer mirrored the acceptance rule, accepted should equal p.Mass; a
+        // shortfall means our prediction and the game's rule disagree, so log it loudly.
         private static void Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
         {
             if (p.IsEmpty)
@@ -218,7 +281,7 @@ namespace PlateCounterflowHeatExchanger
                 outCell, p.Element, p.Mass, p.Temperature, p.DiseaseIdx, p.DiseaseCount);
             if (accepted > 0f)
             {
-                flow.RemoveElement(inCell, accepted);
+                flow.RemoveElement(inCell, p.SourceMass);
             }
             if (accepted < p.Mass - 0.001f)
             {
@@ -229,7 +292,7 @@ namespace PlateCounterflowHeatExchanger
         // Counterflow heat exchange between the two moving packets for one tick, by the
         // ε-NTU method. Trades heat, never mass; only the packet temperatures change. Disease
         // and element are untouched.
-        private void ExchangeHeat(float dt, ref Packet a, ref Packet b)
+        private void ExchangeHeat(float dt, ref Packet a, ref Packet b, float conductance)
         {
             if (conductance <= 0f)
             {
@@ -295,9 +358,10 @@ namespace PlateCounterflowHeatExchanger
             // filled pipe are usually partial, so they say little about full-flow behavior.
             if (DebugLog && exchangeTicks++ % LogEveryTicks == 0)
             {
-                Debug.Log($"[PCHX] exchange #{exchangeTicks}: dt={dt:F3}s G={conductance:F0} " +
-                          $"A={a.Mass:F2}kg {a.Element} {aIn:F1}K->{a.Temperature:F1}K " +
-                          $"B={b.Mass:F2}kg {b.Element} {bIn:F1}K->{b.Temperature:F1}K " +
+                Debug.Log($"[PCHX] exchange #{exchangeTicks}: dt={dt:F3}s Gclean={cleanConductance:F0} G={conductance:F0} " +
+                          $"foul={FoulingFraction() * 100f:F1}% depA={Fouling.TotalMass(depositA):F4}kg depB={Fouling.TotalMass(depositB):F4}kg " +
+                          $"A={a.Mass:F3}kg {a.Element} {aIn:F1}K->{a.Temperature:F1}K " +
+                          $"B={b.Mass:F3}kg {b.Element} {bIn:F1}K->{b.Temperature:F1}K " +
                           $"cMin={cMin:F0} NTU={ntu:F3} Cr={cr:F3} eps={eps:F3} Q={q:F0}J");
             }
         }
