@@ -17,7 +17,8 @@ here for the reasoning behind them.
 - [Thermal model](#thermal-model)
 - [Fouling model](#fouling-model)
 - [Cleaning](#cleaning)
-- [Shell heat, insulation, and melting (planned)](#shell-heat-insulation-and-melting-planned)
+- [Shell heat, insulation, and melting](#shell-heat-insulation-and-melting)
+- [Localization](#localization)
 - [Build menu, research, and recipe](#build-menu-research-and-recipe)
 - [Source map](#source-map)
 - [Building and testing](#building-and-testing)
@@ -161,7 +162,7 @@ Setting deposition equal to removal gives the asymptotic deposit
 wall, as observed), so rate and τ are not independent. Change τ alone to move pacing and equilibrium together; change rate
 and τ by reciprocal factors to move pacing while holding every equilibrium fixed.
 The ×3 pacing change below is the second kind. The cleaning threshold
-(`AutoCleanThreshold`, 50%) is a separate gameplay constant on the workable and
+(`AutoCleanThresholdPercent`, 50) is a separate gameplay constant on the workable and
 is discussed under Deliberate choices, item 4.
 
 ### Fluids and byproducts
@@ -212,24 +213,46 @@ Modeled on vanilla `DropAllWorkable` (the Empty Storage button).
   at least a gram has deposited or an order is pending.
 - An **automatic order at 50% fouling**, fired on the rising edge only and
   re-armed by a completed clean, so a cancelled automatic order is not re-raised
-  every second.
+  every second. The trigger compares the same rounded integer percent the status
+  item displays (`HeatExchangerCore.FoulingPercent`), so the order fires the
+  second the readout says 50%, not a few ticks later at the exact fraction.
 - **Both streams stop while the plates are open.** The conduit updater plans
   nothing, so the input pipes back up exactly as behind a closed valve.
 - On completion the ledgers empty into **one debris chunk per byproduct** at the
   building's temperature, and the plates are clean.
 - Base work time 30 s, scaled by Duplicant attributes. Opening a real plate pack
   is a shift's work; this is a game.
+- The errand is our own chore type, **Clean Plates** (`PCHXChores`), with
+  `EmptyStorage`'s chore groups (Basekeeping, Hauling), no urge, and both of its
+  priorities copied at runtime. Decompile facts (2026-09-07): `ChoreTypes.Add` is
+  private but only wraps `ChoreType`'s public constructor, which registers with
+  its parent set, resolves group names through `Db.Get().ChoreGroups.TryGet`, and
+  creates the duplicant status item itself, so a type constructed in the
+  `Db.Initialize` postfix is fully wired. The implicit-priority counter drops by
+  50 per vanilla type, so taking the next slot would rank the errand below Idle;
+  copying `EmptyStorage.priority` avoids that. Creation failure falls back to
+  `EmptyStorage`. The chore strings carry no placeholders, so nothing depends on
+  `Chore.ResolveString`.
 - The pending order is saved; the chore object is rebuilt on load.
 
 Status items: **Fouling: N%** always, with a tooltip explaining asymptotic
 fouling and listing each stream's deposits; **Cleaning ordered** while a chore is
-pending.
+pending. Three yellow (`BadMinor`) warnings: **Needs cleaning** when fouling is
+past the threshold with no order pending (the cancelled-order case); **Pipe not
+connected** when any of the four port cells has no pipe segment, naming the
+ports (the same `HasConduit` test that stops the stream, so warning and behaviour
+agree); **Output near phase change** when an outlet leaves within 5 K of its
+fluid's freezing or boiling point, held for 5 s after the last hit so it does not
+flicker. The exchanger can push a fluid past a transition and the output pipe
+then breaks under the vanilla rule; we warn rather than clamp, because clamping
+would create heat from nothing.
 
-## Shell heat, insulation, and melting (planned)
+## Shell heat, insulation, and melting
 Designed 2026-09-07 from decompiled `AirConditioner`, `StructureTemperatureComponents`,
 `BuildingTemplates`, `MonumentTopConfig`, `ThermalBlockConfig`, and
-`StreamingAssets/elements/solid.yaml`. Code written 2026-09-07 (config recipe slot,
-`HeatExchangerCore` shell step and melt rule); unbuilt and unverified.
+`StreamingAssets/elements/solid.yaml`. Code written, built, and verified 2026-09-07
+(config recipe slot, `HeatExchangerCore` shell step and melt rule); see Calibration
+and Verification plan below.
 
 **Problem.** The fluids never touch the building body, so the exchanger emits no
 heat to its room whatever it carries. A player could counterflow magma against
@@ -363,6 +386,38 @@ density, and clearly the minor ingredient.
   Aquatuner's string and the zero-at-stall call costs nothing and stays correct
   if Klei ever surfaces it. The body temperature proves the energy lands.
 
+## Localization
+All player-visible text lives in one `LocString` tree, `PCHXStrings.cs`, whose root
+class is named `STRINGS` (from decompiled `LocString.CreateLocStringKeys` and
+`Localization.RegisterForTranslation`, 2026-09-07).
+
+- `CreateLocStringKeys(type, parent_path)` walks a type's static `LocString`
+  fields and nested types and registers each as `parent_path + TypeName + "." +
+  ... + FIELD`. With a null parent and a root named `STRINGS`, the keys come out
+  as `STRINGS.BUILDINGS.PREFABS.PLATECOUNTERFLOWHEATEXCHANGER.NAME` and so on,
+  which are the exact keys the game reads for building text and the
+  `StatusItem` constructor reads for status text. Nested class names therefore
+  must match those paths letter for letter. Called at mod load, so English is
+  always present.
+- `RegisterForTranslation(root)` lists our assembly with the translation loader
+  and keys the same tree a second time as `PlateCounterflowHeatExchanger.STRINGS.*`,
+  the form `.po` files address. Called from a postfix on
+  `Localization.Initialize`, followed by `CreateLocStringKeys(root, null)` again
+  so translated text lands under the vanilla keys. The patch is applied by hand
+  with a null check, so a renamed method degrades to a log warning and English.
+- Inside our namespace `STRINGS` shadows the game's class; the one vanilla
+  reference (the Aquatuner's energy-source string) is written `global::STRINGS`.
+- `LocString` converts implicitly to and from `string`, so most call sites are
+  unchanged; a conditional expression mixing the two needs an explicit cast.
+
+Still to do for shipped translations: load `translations/<locale>.po` from the
+mod folder between the two calls above, and generate a `.pot` template for
+translators. Both need signatures confirmed in decompile:
+`Localization.LoadStringsFile`, `Localization.OverloadStrings`,
+`Localization.GetLocale` (for the locale code), and
+`Localization.GenerateStringsTemplate`. Low priority until someone asks for a
+translation.
+
 ## Build menu, research, and recipe
 - **Category:** Utilities, in the Aquatuner's group, immediately after the
   Aquatuner. That is where a player looking for equipment that moves heat
@@ -387,12 +442,14 @@ density, and clearly the minor ingredient.
 ## Source map
 | File | Role |
 |---|---|
-| `Mod.cs` | Mod entry, strings, Db patch: plan-screen placement, research unlock, status-item creation |
+| `Mod.cs` | Mod entry, string registration and localization patch, Db patch: plan-screen placement, research unlock, status-item and chore-type creation |
+| `PCHXStrings.cs` | The `STRINGS` LocString tree: every player-visible string |
 | `PlateCounterflowHeatExchangerConfig.cs` | BuildingDef, port offsets, three-material recipe, component wiring |
 | `HeatExchangerCore.cs` | Both streams: plan / melt check / foul / exchange / shell / commit; secondary ports; fouling ledgers; status item |
 | `Fouling.cs` | Fouling table, temperature factors, the per-tick deposition/removal step |
 | `FoulingCleanWorkable.cs` | Cleaning errand: button, automatic trigger, work lifecycle, debris |
-| `PCHXStatusItems.cs` | The two status items and their string callbacks |
+| `PCHXStatusItems.cs` | The five status items, their string callbacks, and the add/remove toggle helper |
+| `PCHXChores.cs` | The Clean Plates chore type, built from `EmptyStorage`'s groups and priorities |
 | `mod.yaml`, `mod_info.yaml` | Mod manifest. `supportedContent` is obsolete; omitting the DLC lists means "runs everywhere" |
 
 ## Building and testing
@@ -445,29 +502,37 @@ fastest test rig: it fouls to the 50% threshold in about four cycles.
   ~~insulator read~~ verified. Melt on magma verified (see Shell heat,
   Verification plan).
 
+- Polish batch written 2026-09-07, unbuilt and unverified: rounded-percent trigger
+  (`FoulingPercent`, `AutoCleanThresholdPercent`), Needs cleaning, Pipe not
+  connected, Output near phase change. Checks: (a) auto order fires the same second
+  the readout first shows 50%; (b) cancel that order: yellow "Needs cleaning"
+  appears, clears on a completed clean; (c) deconstruct one port's pipe: "Pipe not
+  connected" names that port, clears when re-piped; (d) run 275 K water against
+  a cold brine stream until the water outlet nears 273 K: "Output near phase
+  change" names the stream and both temperatures, clears within 5 s of the
+  outlet warming; (e) the errand shows as "Clean Plates" in the building's
+  errand list and the duplicant's status reads "Cleaning heat exchanger plates",
+  with no fallback warning in the log; (f) after the strings refactor every text
+  still renders (building name and description, all five status items, both
+  buttons, deposit list) with no raw `STRINGS.` keys showing; (g) the log has no
+  "Localization.Initialize not found" or "could not patch" warning.
+
 ## To do
+Written 2026-09-07, unbuilt and unverified (see Verification record): rounded-percent
+trigger, Needs cleaning, Pipe not connected, Output near phase change, Clean Plates
+chore type, `STRINGS` LocString tree (all text moved out of `Mod.cs`).
+
 **Player-facing**
 - Mod options menu: a switch to disable fouling entirely, and a slider for
   `PackingFactor` (effectiveness). PLib's options system is the usual route and
   is usable for options alone even though we avoid it for conduits.
-- Localization: move all player-visible strings (building text, status items,
-  tooltips, button labels) into a `LocString` tree registered for translation so
-  non-English players get translated text. Button labels are currently plain
-  constants.
-- Custom chore type so the errand reads "Clean" rather than "Empty Storage".
-- Trigger on the displayed percent: the tooltip rounds, so it reads "50%" from
-  49.5% while the automatic order waits for the exact fraction. Compare the same
-  rounded integer the player sees so the two agree.
-- "Needs cleaning" warning status item (yellow, `NotificationType.BadMinor`)
-  for the case where fouling is over the threshold but the automatic order was
-  cancelled.
-- Codex / database entry explaining the exchanger and asymptotic fouling.
-- "Input not connected" status for stream A's primary input (destroying the
-  auto-attached `ConduitConsumer` removed the vanilla one). Stream B's ports have
-  never had one.
-- Near-phase-change warning: the exchanger can push a fluid past freezing or
-  boiling, and the output pipe then breaks under the vanilla rule. Warn rather
-  than clamp.
+- Localization, stage 2: load our own `translations/<locale>.po` and generate a
+  `.pot` template (see Localization for the signatures still needed). Stage 1,
+  the `STRINGS` tree registered for translation, is written (unbuilt).
+- Codex: the game's automatic Database entry exists (verified 2026-09-07: art,
+  DESC, and recipe all shown), so DESC now carries a three-paragraph summary of
+  the model (unbuilt). A custom section (diagram, fouling curve) would need the
+  codex generator decompiled; low priority.
 - Custom art (kanim tooling is Windows-centric; deferred).
 
 **Model**

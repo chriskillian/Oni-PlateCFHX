@@ -122,6 +122,21 @@ namespace PlateCounterflowHeatExchanger
         // Handle for the always-on "Fouling: N%" status item.
         private System.Guid foulingStatus;
 
+        // Warning status items (README, "Cleaning", status items). Ports: a pipe is missing
+        // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
+        // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
+        // changes state in a pipe breaks it under the vanilla rule. We warn, never clamp.
+        private const float PhaseMargin = 5f;          // K
+        private const int PhaseWarningHoldTicks = 5;   // ticks the warning stays up after the last hit
+        private KSelectable selectable;
+        private System.Guid portsStatus;
+        private System.Guid phaseStatus;
+        private int phaseWarningTicks;
+
+        // Live text behind the two warnings, read by the status-item tooltip callbacks.
+        public string MissingPorts { get; private set; } = "";
+        public string PhaseWarning { get; private set; } = "";
+
         protected override void OnSpawn()
         {
             base.OnSpawn();
@@ -182,12 +197,15 @@ namespace PlateCounterflowHeatExchanger
 
             // The fouling readout. We pass ourselves as the item's data so its string
             // callbacks can read the live ledgers each time the panel refreshes.
-            foulingStatus = GetComponent<KSelectable>().AddStatusItem(PCHXStatusItems.Fouling, this);
+            selectable = GetComponent<KSelectable>();
+            foulingStatus = selectable.AddStatusItem(PCHXStatusItems.Fouling, this);
         }
 
         protected override void OnCleanUp()
         {
-            GetComponent<KSelectable>().RemoveStatusItem(foulingStatus);
+            selectable.RemoveStatusItem(foulingStatus);
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PortsDisconnected, false, this, ref portsStatus);
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PhaseChangeRisk, false, this, ref phaseStatus);
             Conduit.GetFlowManager(Type).RemoveConduitUpdater(ConduitUpdate);
             IUtilityNetworkMgr mgr = Conduit.GetNetworkManager(Type);
             mgr.RemoveFromNetworks(secondaryInputCell, secondaryInputItem, true);
@@ -206,14 +224,22 @@ namespace PlateCounterflowHeatExchanger
 
         private void ConduitUpdate(float dt)
         {
-            // Plate pack open for cleaning: nothing moves on either stream this tick.
             // Melted: the object is being destroyed at end of frame; do nothing meanwhile.
-            if (FlowBlocked || melted)
+            if (melted)
             {
                 return;
             }
 
             ConduitFlow flow = Conduit.GetFlowManager(Type);
+            RefreshPortStatus(flow);
+
+            // Plate pack open for cleaning: nothing moves on either stream this tick. The
+            // phase warning is still ticked so it can expire while the plates are open.
+            if (FlowBlocked)
+            {
+                RefreshPhaseStatus(default, default);
+                return;
+            }
 
             // 1. Plan: what will actually move on each stream this tick, given the input's
             //    contents and the output's free capacity. Each stream is planned on its own.
@@ -251,6 +277,9 @@ namespace PlateCounterflowHeatExchanger
             //     the vanilla structure-temperature sim.
             ShellExchange(dt, ref a, ref b);
 
+            // 3c. Warn if either outlet is about to freeze or boil in its pipe.
+            RefreshPhaseStatus(a, b);
+
             // 4. Commit, bridge-style: add to output, then remove the planned mass from input.
             Commit(flow, primaryInputCell, primaryOutputCell, a);
             Commit(flow, secondaryInputCell, secondaryOutputCell, b);
@@ -280,7 +309,7 @@ namespace PlateCounterflowHeatExchanger
                 {
                     if (DebugLog)
                     {
-                        Debug.Log($"[PCHX] insulator={ins.id} k={ins.thermalConductivity} Gshell={ins.thermalConductivity * ShellFactor:F1}W/K");
+                        Debug.Log($"[PCHX] insulator={ins.id} k={ins.thermalConductivity} Gshell={ins.thermalConductivity * ShellFactor:G4}W/K");
                     }
                     return ins.thermalConductivity;
                 }
@@ -308,7 +337,7 @@ namespace PlateCounterflowHeatExchanger
                 if (idleShellTicks >= 2 && !shellIdleReported)
                 {
                     GameComps.StructureTemperatures.ProduceEnergy(structureTemperature, 0f,
-                        STRINGS.BUILDING.STATUSITEMS.OPERATINGENERGY.PIPECONTENTS_TRANSFER, dt);
+                        global::STRINGS.BUILDING.STATUSITEMS.OPERATINGENERGY.PIPECONTENTS_TRANSFER, dt);
                     shellIdleReported = true;
                 }
                 return;
@@ -323,7 +352,7 @@ namespace PlateCounterflowHeatExchanger
             float joules = qA + qB;
 
             GameComps.StructureTemperatures.ProduceEnergy(structureTemperature, joules / 1000f,
-                STRINGS.BUILDING.STATUSITEMS.OPERATINGENERGY.PIPECONTENTS_TRANSFER, dt);
+                global::STRINGS.BUILDING.STATUSITEMS.OPERATINGENERGY.PIPECONTENTS_TRANSFER, dt);
 
             if (DebugLog && shellTicks++ % LogEveryTicks == 0)
             {
@@ -390,7 +419,66 @@ namespace PlateCounterflowHeatExchanger
             return 1f - ActualConductance() / cleanConductance;
         }
 
+        // The integer percent the player sees. The automatic cleaning trigger compares this
+        // same value, so the order fires exactly when the readout says the threshold.
+        public int FoulingPercent() => Mathf.RoundToInt(FoulingFraction() * 100f);
+
         public float DepositMass() => Fouling.TotalMass(depositA) + Fouling.TotalMass(depositB);
+
+        // ---- Warnings ----
+
+        // A port with no pipe segment on it. HasConduit is the same test PlanTransfer uses to
+        // decide a stream cannot move, so the warning and the behaviour agree. Port names
+        // follow the unrotated layout; the building is not rotatable.
+        private void RefreshPortStatus(ConduitFlow flow)
+        {
+            string missing = null;
+            if (!flow.HasConduit(primaryInputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_A_IN);
+            if (!flow.HasConduit(primaryOutputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_A_OUT);
+            if (!flow.HasConduit(secondaryInputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_B_IN);
+            if (!flow.HasConduit(secondaryOutputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_B_OUT);
+            MissingPorts = missing ?? "";
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PortsDisconnected, missing != null, this, ref portsStatus);
+        }
+
+        private static string AppendLine(string list, string item) => list == null ? item : list + "\n" + item;
+
+        // Outlet temperatures against the fluid's own transition points. The warning holds for
+        // a few ticks after the last hit so a value hovering at the margin does not flicker.
+        private void RefreshPhaseStatus(Packet a, Packet b)
+        {
+            string wa = PhaseRisk(STRINGS.UI.PCHX.STREAM_A, a);
+            string wb = PhaseRisk(STRINGS.UI.PCHX.STREAM_B, b);
+            string warning = wa != null && wb != null ? wa + "\n" + wb : wa ?? wb;
+            if (warning != null)
+            {
+                PhaseWarning = warning;
+                phaseWarningTicks = PhaseWarningHoldTicks;
+            }
+            else if (phaseWarningTicks > 0)
+            {
+                phaseWarningTicks--;
+            }
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PhaseChangeRisk, phaseWarningTicks > 0, this, ref phaseStatus);
+        }
+
+        private static string PhaseRisk(string stream, Packet p)
+        {
+            if (p.IsEmpty) return null;
+            Element e = ElementLoader.FindElementByHash(p.Element);
+            if (e == null) return null;
+            if (p.Temperature <= e.lowTemp + PhaseMargin)
+            {
+                return string.Format(STRINGS.UI.PCHX.PHASE_FREEZE, stream,
+                    GameUtil.GetFormattedTemperature(p.Temperature), e.name, GameUtil.GetFormattedTemperature(e.lowTemp));
+            }
+            if (p.Temperature >= e.highTemp - PhaseMargin)
+            {
+                return string.Format(STRINGS.UI.PCHX.PHASE_BOIL, stream,
+                    GameUtil.GetFormattedTemperature(p.Temperature), e.name, GameUtil.GetFormattedTemperature(e.highTemp));
+            }
+            return null;
+        }
 
         // Empty both ledgers and hand back the deposits merged by byproduct, so the cleaner
         // can drop one chunk per material. Mass leaves the ledgers here and reappears as
@@ -417,7 +505,8 @@ namespace PlateCounterflowHeatExchanger
         // One line per stream for the status tooltip, e.g. "Stream A: 0.3 kg Salt".
         public string DescribeDeposits()
         {
-            return "Stream A (bottom): " + Describe(depositA) + "\nStream B (top): " + Describe(depositB);
+            return string.Format(STRINGS.UI.PCHX.DEPOSIT_LINE, STRINGS.UI.PCHX.STREAM_A, Describe(depositA)) + "\n" +
+                   string.Format(STRINGS.UI.PCHX.DEPOSIT_LINE, STRINGS.UI.PCHX.STREAM_B, Describe(depositB));
         }
 
         private static string Describe(Dictionary<SimHashes, float> ledger)
@@ -430,7 +519,9 @@ namespace PlateCounterflowHeatExchanger
                 string name = e != null ? e.name : kv.Key.ToString();
                 parts.Add(GameUtil.GetFormattedMass(kv.Value) + " " + name);
             }
-            return parts.Count == 0 ? "clean" : string.Join(", ", parts);
+            // Explicit cast: LocString converts implicitly both to and from string, which
+            // leaves a conditional expression with no single type to pick.
+            return parts.Count == 0 ? (string)STRINGS.UI.PCHX.NO_DEPOSITS : string.Join(", ", parts);
         }
 
         // Predict this tick's transfer on one stream by applying ConduitFlow.AddElement's own

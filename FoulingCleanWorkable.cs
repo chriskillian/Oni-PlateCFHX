@@ -14,9 +14,11 @@ namespace PlateCounterflowHeatExchanger
     [SerializationConfig(MemberSerialization.OptIn)]
     public class FoulingCleanWorkable : Workable, ISim1000ms
     {
-        // Fouling fraction at which a cleaning chore is raised automatically (rising edge
-        // only; see autoArmed).
-        public const float AutoCleanThreshold = 0.5f;
+        // Displayed fouling percent at which a cleaning chore is raised automatically (rising
+        // edge only; see autoArmed). Compared against HeatExchangerCore.FoulingPercent, the
+        // same rounded integer the status item shows, so the order fires when the readout
+        // says 50%, not a few ticks later at the exact fraction.
+        public const int AutoCleanThresholdPercent = 50;
 
         // Base work time in seconds; duplicant attributes scale it.
         private const float CleanWorkTime = 30f;
@@ -35,6 +37,7 @@ namespace PlateCounterflowHeatExchanger
 
         private Chore chore;
         private System.Guid orderedStatus;
+        private System.Guid needsCleaningStatus;
         private bool showButton;
 
         // Workables want a Prioritizable so the player can set the errand's priority.
@@ -118,11 +121,13 @@ namespace PlateCounterflowHeatExchanger
                 OnCompleteWork(null);
                 return;
             }
-            // EmptyStorage is the closest vanilla chore type (a Tidying errand, no skill
-            // gate). only_when_operational: false because a passive building has no
-            // operational state to wait on.
+            // Our own chore type (PCHXChores), a copy of EmptyStorage's groups and priorities
+            // under the name "Clean Plates"; EmptyStorage itself if creation failed.
+            // only_when_operational: false because a passive building has no operational
+            // state to wait on.
+            ChoreType choreType = PCHXChores.CleanPlates ?? Db.Get().ChoreTypes.EmptyStorage;
             Chore = new WorkChore<FoulingCleanWorkable>(
-                Db.Get().ChoreTypes.EmptyStorage, this, null,
+                choreType, this, null,
                 run_until_complete: true, null, null, null,
                 allow_in_red_alert: true, null,
                 ignore_schedule_block: false, only_when_operational: false);
@@ -141,15 +146,16 @@ namespace PlateCounterflowHeatExchanger
             RefreshButton();
         }
 
-        // Automatic trigger, checked once a second.
+        // Automatic trigger, checked once a second. Also keeps the "Needs cleaning" warning
+        // current, since fouling moves without any order changing.
         public void Sim1000ms(float dt)
         {
-            float f = core.FoulingFraction();
-            if (autoArmed && Chore == null && f >= AutoCleanThreshold)
+            if (autoArmed && Chore == null && core.FoulingPercent() >= AutoCleanThresholdPercent)
             {
                 autoArmed = false;
                 OrderClean();
             }
+            RefreshStatusItem();
             RefreshButton();
         }
 
@@ -195,10 +201,10 @@ namespace PlateCounterflowHeatExchanger
         {
             if (!showButton) return;
             KIconButtonMenu.ButtonInfo button = Chore == null
-                ? new KIconButtonMenu.ButtonInfo("action_empty_contents", PCHXStrings.CleanButton, ToggleClean,
-                    Action.NumActions, null, null, null, PCHXStrings.CleanButtonTooltip)
-                : new KIconButtonMenu.ButtonInfo("action_empty_contents", PCHXStrings.CancelCleanButton, ToggleClean,
-                    Action.NumActions, null, null, null, PCHXStrings.CancelCleanButtonTooltip);
+                ? new KIconButtonMenu.ButtonInfo("action_empty_contents", STRINGS.UI.PCHX.CLEAN_BUTTON, ToggleClean,
+                    Action.NumActions, null, null, null, STRINGS.UI.PCHX.CLEAN_BUTTON_TOOLTIP)
+                : new KIconButtonMenu.ButtonInfo("action_empty_contents", STRINGS.UI.PCHX.CANCEL_CLEAN_BUTTON, ToggleClean,
+                    Action.NumActions, null, null, null, STRINGS.UI.PCHX.CANCEL_CLEAN_BUTTON_TOOLTIP);
             Game.Instance.userMenu.AddButton(gameObject, button);
         }
 
@@ -215,17 +221,15 @@ namespace PlateCounterflowHeatExchanger
             }
         }
 
+        // "Cleaning ordered" while a chore exists; "Needs cleaning" (yellow) when fouling is
+        // past the threshold with no order pending, which is the cancelled-order case.
         private void RefreshStatusItem()
         {
             KSelectable selectable = GetComponent<KSelectable>();
-            if (Chore != null && orderedStatus == System.Guid.Empty)
-            {
-                orderedStatus = selectable.AddStatusItem(PCHXStatusItems.CleaningOrdered);
-            }
-            else if (Chore == null && orderedStatus != System.Guid.Empty)
-            {
-                orderedStatus = selectable.RemoveStatusItem(orderedStatus);
-            }
+            bool ordered = Chore != null;
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.CleaningOrdered, ordered, core, ref orderedStatus);
+            bool needs = !ordered && core.FoulingPercent() >= AutoCleanThresholdPercent;
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.NeedsCleaning, needs, core, ref needsCleaningStatus);
         }
     }
 }

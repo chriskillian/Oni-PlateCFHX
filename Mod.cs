@@ -10,48 +10,50 @@ namespace PlateCounterflowHeatExchanger
             base.OnLoad(harmony); // applies any [HarmonyPatch] classes in this assembly
             UnityEngine.Debug.Log("[PlateCounterflowHX] Mod loaded.");
             AddStrings();
+            PatchLocalization(harmony);
         }
 
-        // The game looks up building text by these dotted keys. The middle segment
-        // is the building id in upper case.
+        // Register every LocString in our STRINGS tree under the game's own dotted keys
+        // (STRINGS.BUILDINGS.PREFABS.<ID>.NAME and so on). English is in place from mod
+        // load; the Localization patch below re-registers translated text later.
         private static void AddStrings()
         {
-            string prefix = "STRINGS.BUILDINGS.PREFABS." +
-                            PlateCounterflowHeatExchangerConfig.ID.ToUpperInvariant() + ".";
-            Strings.Add(prefix + "NAME", "Plate Counterflow Heat Exchanger");
-            Strings.Add(prefix + "DESC",
-                "A passive plate heat exchanger. It moves heat between two fluid streams and draws no power.");
-            Strings.Add(prefix + "EFFECT",
-                "Transfers heat between two fluid streams. Fouls over time and needs periodic cleaning.");
-
-            // Status items: the StatusItem constructor resolves these from its id (upper
-            // case) and the "BUILDING" prefix. {Placeholders} are filled by the callbacks
-            // in PCHXStatusItems.
-            const string status = "STRINGS.BUILDING.STATUSITEMS.";
-            Strings.Add(status + "PCHX_FOULING.NAME", "Fouling: {Fouling}");
-            Strings.Add(status + "PCHX_FOULING.TOOLTIP",
-                "Deposits on the plates add thermal resistance. Heat transfer is down {Fouling} from clean.\n\n" +
-                "Deposits build up with flow but are also scoured away by it, and scouring grows faster than deposition. " +
-                "Fouling therefore levels off instead of climbing forever, and it levels off LOWER at high flow. " +
-                "Throttling a stream raises effectiveness but lets more deposit settle.\n\n" +
-                "Hot plates speed scaling (Brine, Salt Water) and coking (Crude Oil, Petroleum). " +
-                "Plates above 72 °C stop biological growth from Polluted Water. Water and Ethanol do not foul.\n\n" +
-                "A Duplicant is sent to clean at {Threshold}. Cleaning stops both streams and drops the deposits as debris.\n\n" +
-                "{Deposits}");
-            Strings.Add(status + "PCHX_CLEANINGORDERED.NAME", "Cleaning ordered");
-            Strings.Add(status + "PCHX_CLEANINGORDERED.TOOLTIP",
-                "A Duplicant will open the plate pack and remove the deposits. Both streams stop while the plates are open.");
+            LocString.CreateLocStringKeys(typeof(STRINGS), null);
         }
-    }
 
-    // User-menu text. Plain constants for now. The menu takes strings, not string keys.
-    // To-do: localization (a LocString tree registered for translation) (see README).
-    public static class PCHXStrings
-    {
-        public const string CleanButton = "Clean Plates";
-        public const string CleanButtonTooltip = "Order a Duplicant to open the plate pack and remove deposits. Both streams stop during cleaning.";
-        public const string CancelCleanButton = "Cancel Cleaning";
-        public const string CancelCleanButtonTooltip = "Withdraw the cleaning order.";
+        // Localization.Initialize is where the game picks its language. Postfixing it is the
+        // conventional place for mods to register their string tree for translation. Patched
+        // by hand rather than with an attribute so that a missing or renamed method degrades
+        // to a warning and English text, instead of failing the whole mod load.
+        private static void PatchLocalization(Harmony harmony)
+        {
+            try
+            {
+                System.Reflection.MethodInfo target = AccessTools.Method(typeof(Localization), "Initialize");
+                if (target == null)
+                {
+                    UnityEngine.Debug.LogWarning("[PlateCounterflowHX] Localization.Initialize not found; strings stay English.");
+                    return;
+                }
+                harmony.Patch(target, postfix: new HarmonyMethod(typeof(Mod), nameof(OnLocalizationInitialized)));
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogWarning("[PlateCounterflowHX] could not patch Localization.Initialize; strings stay English. " + e);
+            }
+        }
+
+        // 1. RegisterForTranslation: lists our assembly with the translation loader and keys
+        //    the tree as PlateCounterflowHeatExchanger.STRINGS.*, the form .po files use.
+        // 2. CreateLocStringKeys(root, null): re-registers the (possibly translated) text
+        //    under the vanilla STRINGS.* keys the game and our StatusItems read.
+        // Loading our own translations/<locale>.po files sits between the two; see README,
+        // "Localization", for what that still needs.
+        public static void OnLocalizationInitialized()
+        {
+            Localization.RegisterForTranslation(typeof(STRINGS));
+            LocString.CreateLocStringKeys(typeof(STRINGS), null);
+        }
     }
 
     // Db.Initialize runs after buildings are generated and the plan screen exists,
@@ -89,8 +91,18 @@ namespace PlateCounterflowHeatExchanger
         // rather than Get: a wrong id degrades to an ungated building plus a log line.
         public static void Postfix()
         {
-            // Our status items, created once the game's own Db exists.
+            // Our status items and chore type, created once the game's own Db exists.
             PCHXStatusItems.Create();
+            try
+            {
+                PCHXChores.Create();
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogWarning(
+                    "[PlateCounterflowHX] could not create the Clean Plates chore type; " +
+                    "falling back to Empty Storage. " + e);
+            }
 
             Tech tech = Db.Get().Techs.TryGet(UnlockTechId);
             if (tech == null)
