@@ -235,15 +235,29 @@ Modeled on vanilla `DropAllWorkable` (the Empty Storage button).
   `Chore.ResolveString`.
 - The pending order is saved; the chore object is rebuilt on load.
 
-Status items: **Fouling: N%** always, with a tooltip explaining asymptotic
-fouling and listing each stream's deposits; **Cleaning ordered** while a chore is
-pending. Three yellow (`BadMinor`) warnings: **Needs cleaning** when fouling is
-past the threshold with no order pending (the cancelled-order case); **Pipe not
-connected** when any of the four port cells has no pipe segment, naming the
-ports (the same `HasConduit` test that stops the stream, so warning and behaviour
-agree); **Output near phase change** when an outlet leaves within 5 K of its
-fluid's freezing or boiling point, held for 5 s after the last hit so it does not
-flicker. The exchanger can push a fluid past a transition and the output pipe
+Status items: **Fouling: N%** always, with a short tooltip (fouling levels off
+with flow, cleaning point, each stream's deposits; the full explanation is in the
+building description, which the codex shows). Tooltip lines are kept under about
+80 characters with explicit breaks: the side-panel status tooltip sizes itself to
+its longest line rather than wrapping, and the first paragraph-length version ran
+off both edges of the screen (check f, 2026-09-07); **Cleaning ordered** while a chore is
+pending. Three warning (`BadMinor`) items, drawn in the warning colour: **Needs cleaning** when fouling is
+past the threshold with no order pending (the cancelled-order case); **No pipe:
+&lt;port&gt;**, one item per port, whenever that port cell has no pipe segment (the
+same `HasConduit` test that stops the stream, so warning and behaviour agree).
+Four fixed-text items rather than one with a list because the world hover card
+shows status names only, so the name itself has to say which port (check c,
+2026-09-07, found the single-item version uninformative there). The vanilla
+`RequireInputs`/`RequireOutputs` components the def attaches are removed at spawn
+with the consumer and dispenser: they covered stream A's ports only, the input
+one went inert when the consumer was destroyed, and the output one duplicated
+ours; **Output near phase change** when an outlet leaves within 2 K of its
+fluid's listed freezing or boiling point, held for 5 s after the last hit so it
+does not flicker. The sim only changes an element's state 3 K beyond the listed
+point and then rebounds 1.5 K toward it (Klei's stand-in for latent heat, and a
+hysteresis band so a fluid sitting at the point does not flip state every tick),
+so 2 K past the listed value is 5 K of real headroom. Verified 2026-09-07: water
+left at 272.0 K, below its listed 273.15 K, and stayed liquid. The exchanger can push a fluid past a transition and the output pipe
 then breaks under the vanilla rule; we warn rather than clamp, because clamping
 would create heat from nothing.
 
@@ -502,25 +516,32 @@ fastest test rig: it fouls to the 50% threshold in about four cycles.
   ~~insulator read~~ verified. Melt on magma verified (see Shell heat,
   Verification plan).
 
-- Polish batch written 2026-09-07, unbuilt and unverified: rounded-percent trigger
+- Polish batch written 2026-09-07; checks a, b, d, e, and f verified the same
+  evening on the first build, c and the tooltip fit await the rework build. Items: rounded-percent trigger
   (`FoulingPercent`, `AutoCleanThresholdPercent`), Needs cleaning, Pipe not
   connected, Output near phase change. Checks: (a) auto order fires the same second
-  the readout first shows 50%; (b) cancel that order: yellow "Needs cleaning"
-  appears, clears on a completed clean; (c) deconstruct one port's pipe: "Pipe not
-  connected" names that port, clears when re-piped; (d) run 275 K water against
+  the readout first shows 50% (verified); (b) cancel that order: the "Needs
+  cleaning" warning appears, clears on a completed clean (verified; tooltip then
+  cut to two short lines at the user's request, unbuilt); (c) deconstruct one port's pipe: a "No
+  pipe: <port>" item names that port and clears when re-piped, with no vanilla
+  "No liquid output" alongside (first version, 2026-09-07: the item appeared but
+  the hover card did not name the port, and stream A's output also raised the
+  vanilla item; reworked, unbuilt); (d) run 275 K water against
   a cold brine stream until the water outlet nears 273 K: "Output near phase
   change" names the stream and both temperatures, clears within 5 s of the
-  outlet warming; (e) the errand shows as "Clean Plates" in the building's
+  outlet warming (verified with the 5 K margin: fired with water out at 272.0 K,
+  cleared after brine was warmed to 344 K; margin then cut to 2 K, unbuilt); (e) the errand shows as "Clean Plates" in the building's
   errand list and the duplicant's status reads "Cleaning heat exchanger plates",
-  with no fallback warning in the log; (f) after the strings refactor every text
-  still renders (building name and description, all five status items, both
-  buttons, deposit list) with no raw `STRINGS.` keys showing; (g) the log has no
+  with no fallback warning in the log (verified); (f) after the strings refactor every text
+  still renders (building name and description, all status items, both
+  buttons, deposit list) with no raw `STRINGS.` keys showing, and every tooltip
+  fits on screen (first build: the fouling tooltip overran both edges; lines
+  shortened, unbuilt); (g) the log has no
   "Localization.Initialize not found" or "could not patch" warning.
 
 ## To do
-Written 2026-09-07, unbuilt and unverified (see Verification record): rounded-percent
-trigger, Needs cleaning, Pipe not connected, Output near phase change, Clean Plates
-chore type, `STRINGS` LocString tree (all text moved out of `Mod.cs`).
+Polish batch of 2026-09-07 verified except the per-port pipe warning and tooltip
+fit, which await the next build (see Verification record).
 
 **Player-facing**
 - Mod options menu: a switch to disable fouling entirely, and a slider for
@@ -539,9 +560,13 @@ chore type, `STRINGS` LocString tree (all text moved out of `Mod.cs`).
 - Shell heat, insulation slot, and plate melt rule: built and verified; calibration
   closed with `ShellFactor = 1500` and default `def.ThermalConductivity`. Rebuild
   pending for the `G4` shell-log format fix (Insulite prints 0.0 W/K under F1).
-- DLC fluids in the fouling table (Mucin first). `SimHashes` carries DLC members
-  regardless of enabled DLCs, so unconditional entries compile; still owed a
-  runtime check that a disabled-DLC element lookup cannot throw.
+- Classify every liquid in the game, base and DLC, for its deposit type or none
+  (Mucin first). `SimHashes` carries DLC members regardless of enabled DLCs, so
+  unconditional entries compile; still owed a runtime check that a disabled-DLC
+  element lookup cannot throw. Decision (2026-09-07): the list of fouling fluids
+  stays out of player-facing text. It would be unworkable in a tooltip once
+  complete, and which fluids foul is left to player discovery; the description
+  and tooltip name only the mechanisms (scaling, coking, biological growth).
 - Flow-rate readout in the tooltip via the game's `accumulators`, as
   `ConduitBridge` does.
 

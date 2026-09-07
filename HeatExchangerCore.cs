@@ -126,15 +126,20 @@ namespace PlateCounterflowHeatExchanger
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
         // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
         // changes state in a pipe breaks it under the vanilla rule. We warn, never clamp.
-        private const float PhaseMargin = 5f;          // K
+        // The sim transitions an element 3 K BEYOND its listed point and then rebounds 1.5 K
+        // back toward it (Klei's latent-heat stand-in and anti-flicker hysteresis), so the
+        // real lead time is PhaseMargin + 3 K: 2 K here gives 5 K of true headroom.
+        private const float PhaseMargin = 2f;          // K past the listed transition point
         private const int PhaseWarningHoldTicks = 5;   // ticks the warning stays up after the last hit
         private KSelectable selectable;
-        private System.Guid portsStatus;
+        private readonly System.Guid[] noPipeStatus = new System.Guid[4]; // PortIndex order
         private System.Guid phaseStatus;
         private int phaseWarningTicks;
 
-        // Live text behind the two warnings, read by the status-item tooltip callbacks.
-        public string MissingPorts { get; private set; } = "";
+        // Index into PCHXStatusItems.NoPipe and noPipeStatus.
+        private enum PortIndex { AIn = 0, AOut = 1, BIn = 2, BOut = 3 }
+
+        // Live text behind the phase warning, read by its status-item tooltip callback.
         public string PhaseWarning { get; private set; } = "";
 
         protected override void OnSpawn()
@@ -149,6 +154,12 @@ namespace PlateCounterflowHeatExchanger
             // never registers its own endpoints).
             RemoveIfPresent<ConduitConsumer>();
             RemoveIfPresent<ConduitDispenser>();
+            // The def's conduit types also attach RequireInputs/RequireOutputs, which raise
+            // the vanilla "No liquid input/output" items for stream A's ports only (and the
+            // input one went inert with the consumer). We warn per port for both streams
+            // ourselves (RefreshPortStatus), so drop them to avoid a duplicate for A.
+            RemoveIfPresent<RequireInputs>();
+            RemoveIfPresent<RequireOutputs>();
 
             // Primary cells are rotation-adjusted for us by Building.
             primaryInputCell = building.GetUtilityInputCell();
@@ -204,7 +215,10 @@ namespace PlateCounterflowHeatExchanger
         protected override void OnCleanUp()
         {
             selectable.RemoveStatusItem(foulingStatus);
-            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PortsDisconnected, false, this, ref portsStatus);
+            for (int i = 0; i < noPipeStatus.Length; i++)
+            {
+                PCHXStatusItems.Toggle(selectable, PCHXStatusItems.NoPipe[i], false, this, ref noPipeStatus[i]);
+            }
             PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PhaseChangeRisk, false, this, ref phaseStatus);
             Conduit.GetFlowManager(Type).RemoveConduitUpdater(ConduitUpdate);
             IUtilityNetworkMgr mgr = Conduit.GetNetworkManager(Type);
@@ -427,21 +441,23 @@ namespace PlateCounterflowHeatExchanger
 
         // ---- Warnings ----
 
-        // A port with no pipe segment on it. HasConduit is the same test PlanTransfer uses to
-        // decide a stream cannot move, so the warning and the behaviour agree. Port names
-        // follow the unrotated layout; the building is not rotatable.
+        // One warning per port with no pipe segment on it. HasConduit is the same test
+        // PlanTransfer uses to decide a stream cannot move, so warning and behaviour agree.
+        // Port names in the status text follow the unrotated layout; the building is not
+        // rotatable.
         private void RefreshPortStatus(ConduitFlow flow)
         {
-            string missing = null;
-            if (!flow.HasConduit(primaryInputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_A_IN);
-            if (!flow.HasConduit(primaryOutputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_A_OUT);
-            if (!flow.HasConduit(secondaryInputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_B_IN);
-            if (!flow.HasConduit(secondaryOutputCell)) missing = AppendLine(missing, STRINGS.UI.PCHX.PORT_B_OUT);
-            MissingPorts = missing ?? "";
-            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PortsDisconnected, missing != null, this, ref portsStatus);
+            SetNoPipe(PortIndex.AIn, !flow.HasConduit(primaryInputCell));
+            SetNoPipe(PortIndex.AOut, !flow.HasConduit(primaryOutputCell));
+            SetNoPipe(PortIndex.BIn, !flow.HasConduit(secondaryInputCell));
+            SetNoPipe(PortIndex.BOut, !flow.HasConduit(secondaryOutputCell));
         }
 
-        private static string AppendLine(string list, string item) => list == null ? item : list + "\n" + item;
+        private void SetNoPipe(PortIndex port, bool missing)
+        {
+            int i = (int)port;
+            PCHXStatusItems.Toggle(selectable, PCHXStatusItems.NoPipe[i], missing, this, ref noPipeStatus[i]);
+        }
 
         // Outlet temperatures against the fluid's own transition points. The warning holds for
         // a few ticks after the last hit so a value hovering at the margin does not flicker.

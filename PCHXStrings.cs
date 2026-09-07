@@ -29,10 +29,9 @@ namespace PlateCounterflowHeatExchanger
                         "A passive plate heat exchanger; it draws no power. Two liquid streams run past each other in " +
                         "opposite directions through a stack of thin metal plates, and heat crosses the plates from the " +
                         "hotter stream to the colder one. Metals with higher thermal conductivity move more heat.\n\n" +
-                        "Brine, Salt Water, Polluted Water, Crude Oil, and Petroleum leave deposits that foul the plates " +
-                        "and cut heat transfer. Flow also scours deposits away, so fouling levels off instead of climbing " +
-                        "without limit, and levels off lower at high flow. A Duplicant is sent to clean the plates at 50% " +
-                        "fouling.\n\n" +
+                        "Some liquids leave deposits that foul the plates and cut heat transfer. Flow also scours " +
+                        "deposits away, so fouling levels off instead of climbing without limit, and levels off lower " +
+                        "at high flow. A Duplicant is sent to clean the plates at 50% fouling.\n\n" +
                         "The shell insulation sets how much heat leaks to the room. Fluids hotter than the plate metal's " +
                         "melting point melt the building.";
                     public static LocString EFFECT =
@@ -46,17 +45,22 @@ namespace PlateCounterflowHeatExchanger
             public static class STATUSITEMS
             {
                 // {Placeholders} are filled by the callbacks in PCHXStatusItems.
+                //
+                // Tooltip lines are kept under about 80 characters with explicit breaks. The
+                // side-panel status tooltip sizes itself to its longest line instead of
+                // wrapping, and a paragraph-length line ran off both screen edges (check f,
+                // 2026-09-07). The long-form explanation of fouling lives in DESC (codex).
                 public static class PCHX_FOULING
                 {
                     public static LocString NAME = "Fouling: {Fouling}";
                     public static LocString TOOLTIP =
-                        "Deposits on the plates add thermal resistance. Heat transfer is down {Fouling} from clean.\n\n" +
-                        "Deposits build up with flow but are also scoured away by it, and scouring grows faster than deposition. " +
-                        "Fouling therefore levels off instead of climbing forever, and it levels off LOWER at high flow. " +
-                        "Throttling a stream raises effectiveness but lets more deposit settle.\n\n" +
-                        "Hot plates speed scaling (Brine, Salt Water) and coking (Crude Oil, Petroleum). " +
-                        "Plates above 72 °C stop biological growth from Polluted Water. Water and Ethanol do not foul.\n\n" +
-                        "A Duplicant is sent to clean at {Threshold}. Cleaning stops both streams and drops the deposits as debris.\n\n" +
+                        "Deposits on the plates add thermal resistance.\n" +
+                        "Heat transfer is down {Fouling} from clean.\n\n" +
+                        "Flow deposits and also scours, so fouling levels off,\n" +
+                        "and levels off lower at high flow.\n" +
+                        "Hot plates speed scaling and coking;\n" +
+                        "above 72 °C they stop biological growth.\n\n" +
+                        "A Duplicant is sent to clean at {Threshold}.\n\n" +
                         "{Deposits}";
                 }
 
@@ -64,22 +68,50 @@ namespace PlateCounterflowHeatExchanger
                 {
                     public static LocString NAME = "Cleaning ordered";
                     public static LocString TOOLTIP =
-                        "A Duplicant will open the plate pack and remove the deposits. Both streams stop while the plates are open.";
+                        "A Duplicant will open the plate pack and remove the deposits.\n" +
+                        "Both streams stop while the plates are open.";
                 }
 
                 public static class PCHX_NEEDSCLEANING
                 {
                     public static LocString NAME = "Needs cleaning";
                     public static LocString TOOLTIP =
-                        "Fouling is at {Fouling}, past the {Threshold} cleaning point, and no cleaning order is pending. " +
-                        "Heat transfer keeps falling until the plates are cleaned.";
+                        "Exchanger plates are fouled.\n" +
+                        "Efficiency keeps falling until the plates are cleaned.";
                 }
 
-                public static class PCHX_PORTSDISCONNECTED
+                public static class PCHX_PHASECHANGERISK
                 {
-                    public static LocString NAME = "Pipe not connected";
+                    public static LocString NAME = "Output near phase change";
                     public static LocString TOOLTIP =
-                        "No liquid pipe at:\n{Ports}\n\nA stream with a missing port does not flow.";
+                        "{Detail}\n\n" +
+                        "A fluid that freezes or boils inside a pipe breaks the pipe.\n" +
+                        "Throttle a stream, or bring the other inlet closer in temperature.";
+                }
+
+                // One item per port, so the hover card (which shows names only) says which.
+                public static class PCHX_NOPIPE_A_IN
+                {
+                    public static LocString NAME = "No pipe: Stream A input (bottom-left)";
+                    public static LocString TOOLTIP = "Connect a liquid pipe to this port.\nA stream with a missing port does not flow.";
+                }
+
+                public static class PCHX_NOPIPE_A_OUT
+                {
+                    public static LocString NAME = "No pipe: Stream A output (bottom-right)";
+                    public static LocString TOOLTIP = "Connect a liquid pipe to this port.\nA stream with a missing port does not flow.";
+                }
+
+                public static class PCHX_NOPIPE_B_IN
+                {
+                    public static LocString NAME = "No pipe: Stream B input (top-right)";
+                    public static LocString TOOLTIP = "Connect a liquid pipe to this port.\nA stream with a missing port does not flow.";
+                }
+
+                public static class PCHX_NOPIPE_B_OUT
+                {
+                    public static LocString NAME = "No pipe: Stream B output (top-left)";
+                    public static LocString TOOLTIP = "Connect a liquid pipe to this port.\nA stream with a missing port does not flow.";
                 }
 
                 public static class PCHX_PHASECHANGERISK
@@ -114,25 +146,21 @@ namespace PlateCounterflowHeatExchanger
                 // Building menu buttons.
                 public static LocString CLEAN_BUTTON = "Clean Plates";
                 public static LocString CLEAN_BUTTON_TOOLTIP =
-                    "Order a Duplicant to open the plate pack and remove deposits. Both streams stop during cleaning.";
+                    "Order a Duplicant to open the plate pack and remove deposits.\nBoth streams stop during cleaning.";
                 public static LocString CANCEL_CLEAN_BUTTON = "Cancel Cleaning";
                 public static LocString CANCEL_CLEAN_BUTTON_TOOLTIP = "Withdraw the cleaning order.";
 
-                // Stream and port names for tooltips (unrotated layout; see the config).
+                // Stream names for tooltips (unrotated layout; see the config).
                 public static LocString STREAM_A = "Stream A (bottom)";
                 public static LocString STREAM_B = "Stream B (top)";
-                public static LocString PORT_A_IN = "Stream A input (bottom-left)";
-                public static LocString PORT_A_OUT = "Stream A output (bottom-right)";
-                public static LocString PORT_B_IN = "Stream B input (top-right)";
-                public static LocString PORT_B_OUT = "Stream B output (top-left)";
 
                 // Deposit list: "{0}: {1}" per stream, and the word for an empty ledger.
                 public static LocString DEPOSIT_LINE = "{0}: {1}";
                 public static LocString NO_DEPOSITS = "clean";
 
                 // {0} stream, {1} outlet temperature, {2} fluid name, {3} transition temperature.
-                public static LocString PHASE_FREEZE = "{0} leaves at {1}; {2} freezes at {3}.";
-                public static LocString PHASE_BOIL = "{0} leaves at {1}; {2} boils at {3}.";
+                public static LocString PHASE_FREEZE = "{0} leaves at {1};\n{2} freezes at {3}.";
+                public static LocString PHASE_BOIL = "{0} leaves at {1};\n{2} boils at {3}.";
             }
         }
     }

@@ -17,7 +17,7 @@ namespace PlateCounterflowHeatExchanger
         public static StatusItem Fouling;
         public static StatusItem CleaningOrdered;
         public static StatusItem NeedsCleaning;      // yellow: past threshold, no order pending
-        public static StatusItem PortsDisconnected;  // yellow: a port cell has no pipe
+        public static StatusItem[] NoPipe = new StatusItem[4]; // yellow, one per port (PortIndex order)
         public static StatusItem PhaseChangeRisk;    // yellow: an outlet is near freezing/boiling
 
         // Add or remove a status item so that its presence matches `on`. `handle` is the
@@ -84,16 +84,16 @@ namespace PlateCounterflowHeatExchanger
                 return str.Replace("{Fouling}", Percent(core)).Replace("{Threshold}", Threshold());
             };
 
-            PortsDisconnected = new StatusItem(
-                "PCHX_PortsDisconnected", "BUILDING", "",
-                StatusItem.IconType.Exclamation, NotificationType.BadMinor,
-                false, OverlayModes.LiquidConduits.ID);
-            PortsDisconnected.resolveTooltipCallback = (str, data) =>
+            // Four fixed-text items rather than one with a list: the world hover card shows
+            // status names only, so the name itself has to say which port.
+            string[] noPipeIds = { "PCHX_NoPipe_A_In", "PCHX_NoPipe_A_Out", "PCHX_NoPipe_B_In", "PCHX_NoPipe_B_Out" };
+            for (int i = 0; i < noPipeIds.Length; i++)
             {
-                var core = data as HeatExchangerCore;
-                if (core == null) return str;
-                return str.Replace("{Ports}", core.MissingPorts);
-            };
+                NoPipe[i] = new StatusItem(
+                    noPipeIds[i], "BUILDING", "",
+                    StatusItem.IconType.Exclamation, NotificationType.BadMinor,
+                    false, OverlayModes.LiquidConduits.ID);
+            }
 
             PhaseChangeRisk = new StatusItem(
                 "PCHX_PhaseChangeRisk", "BUILDING", "",
