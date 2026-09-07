@@ -44,8 +44,8 @@ namespace PlateCounterflowHeatExchanger
         }
     }
 
-    // User-menu text. Plain constants for now: the menu takes strings, not string keys.
-    // Localization (a LocString tree registered for translation) is a README to-do.
+    // User-menu text. Plain constants for now. The menu takes strings, not string keys.
+    // To-do: localization (a LocString tree registered for translation) (see README).
     public static class PCHXStrings
     {
         public const string CleanButton = "Clean Plates";
@@ -59,12 +59,15 @@ namespace PlateCounterflowHeatExchanger
     [HarmonyPatch(typeof(Db), "Initialize")]
     public static class Db_Initialize_Patch
     {
-        // Research node (Improved Plumbing) and build-menu home (Utilities / Temperature,
-        // after the Aquatuner). Why these: README, "Build menu, research, and recipe".
-        private const string UnlockTechId = "ImprovedLiquidPiping";
+        // Research node (Liquid Tuning, the Aquatuner's tech, one tier below Improved
+        // Plumbing) and build-menu home (Utilities, the Aquatuner's group, after the
+        // Aquatuner). See README, "Build menu, research, and recipe".
+        // Tech ids are not their display names; this was copied from Database.Techs.
+        private const string UnlockTechId = "LiquidTemperature";
 
         // Subcategory taken from the game's enum rather than spelled out, so a rename by
         // Klei is a compile error here instead of a silent fall back to "uncategorized".
+        // Must equal the Aquatuner's own PLANSUBCATEGORYSORTING entry (`temperature`).
         private const string PlanCategory = "Utilities";
         private const string PlaceAfterBuilding = "LiquidConditioner";
         private static readonly string PlanSubcategory =

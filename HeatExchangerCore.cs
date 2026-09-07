@@ -49,6 +49,15 @@ namespace PlateCounterflowHeatExchanger
         // Value, per-metal predictions, and the alternative of 100: README.md, "Calibration".
         private const float PackingFactor = 150f;
 
+        // Shell heat loss: G_shell = k_insulator * ShellFactor, where k_insulator is the
+        // thermal conductivity of the third construction material (recipe tag "Insulator").
+        // Sized so Ceramic (k 0.62) loses roughly 1% of a copper exchanger's duty to the
+        // room; to be calibrated in game. README, "Shell heat, insulation, and melting".
+        private const float ShellFactor = 1500f;
+
+        // Used if the insulator cannot be read from the building (see InsulatorConductivity).
+        private const float FallbackInsulatorConductivity = 0.62f; // Ceramic
+
         // KMonoBehaviour fills [MyCmpReq] fields by reflection at spawn, so the compiler
         // cannot see the assignment and warns CS0649. Silence it for this field only.
 #pragma warning disable CS0649
@@ -73,6 +82,24 @@ namespace PlateCounterflowHeatExchanger
         // G_clean, the conductance of the bare plates (W/K), cached at spawn from the
         // construction material's thermal conductivity. Fouling adds resistance in series.
         private float cleanConductance;
+
+        // Shell: conductance from the fluids to the building body (W/K), the body itself,
+        // and the sim handle the Aquatuner uses to hand energy to the structure.
+        private float shellConductance;
+        private PrimaryElement construction;
+        private HandleVector<int>.Handle structureTemperature;
+
+        // Plate melting point: the construction metal's highTemp. When the plate temperature
+        // (the fluid mean) reaches it the building melts like any vanilla structure would,
+        // through the same public DoMelt the sim calls on body temperature.
+        private float meltTemperature;
+        private bool melted;
+
+        // Idle bookkeeping for the energy tooltip: after two ticks with no flow, report zero
+        // once so the displayed rate resets (AirConditioner does the same on a 2 s timer).
+        private int idleShellTicks;
+        private bool shellIdleReported;
+        private int shellTicks;
 
         // Fouling ledgers: kilograms of deposit per byproduct element, one per stream side.
         // SAVED. Thermal resistance is derived from these each tick (Fouling.ResistanceOf).
@@ -128,10 +155,20 @@ namespace PlateCounterflowHeatExchanger
             // Effectiveness scales with the material the exchanger is built from: higher
             // thermal conductivity => lower wall resistance => more heat moved per tick.
             // G = k * footprintArea * PackingFactor. footprintArea is the 3x3 footprint.
-            PrimaryElement construction = GetComponent<PrimaryElement>();
+            construction = GetComponent<PrimaryElement>();
             float k = construction != null ? construction.Element.thermalConductivity : 0f;
             float footprintArea = building.Def.WidthInCells * building.Def.HeightInCells;
             cleanConductance = k * footprintArea * PackingFactor;
+
+            // Plates melt at the metal's melting point. Elements with no melt product carry
+            // Unobtanium as their transition target and DoMelt ignores them; every refined
+            // metal has one.
+            meltTemperature = construction != null ? construction.Element.highTemp : float.MaxValue;
+
+            // Shell: the insulation's conductivity sets how fast fluid heat reaches the body.
+            // The body-to-room leg is the sim's own (AddBuildingHeatExchange over the footprint).
+            shellConductance = InsulatorConductivity() * ShellFactor;
+            structureTemperature = GameComps.StructureTemperatures.GetHandle(gameObject);
 
             // Older saves (or a serializer that skipped the field) leave a ledger null.
             depositA = depositA ?? new Dictionary<SimHashes, float>();
@@ -170,7 +207,8 @@ namespace PlateCounterflowHeatExchanger
         private void ConduitUpdate(float dt)
         {
             // Plate pack open for cleaning: nothing moves on either stream this tick.
-            if (FlowBlocked)
+            // Melted: the object is being destroyed at end of frame; do nothing meanwhile.
+            if (FlowBlocked || melted)
             {
                 return;
             }
@@ -186,6 +224,17 @@ namespace PlateCounterflowHeatExchanger
             //    The wall sits between the streams, so its temperature is estimated as the
             //    mean of both inlets when both flow, or the single inlet otherwise.
             float wall = WallTemperature(a, b);
+
+            //    Plates hotter than the metal's melting point: the building melts. Checked on
+            //    inlet temperatures, before any exchange, and independent of insulation (which
+            //    wraps the skin, not the plates). Nothing is committed; the fluid stays in
+            //    the input pipes, which now end at nothing.
+            if ((!a.IsEmpty || !b.IsEmpty) && wall >= meltTemperature)
+            {
+                Melt(wall);
+                return;
+            }
+
             Fouling.Apply(ref a, depositA, wall, dt);
             Fouling.Apply(ref b, depositB, wall, dt);
 
@@ -197,6 +246,11 @@ namespace PlateCounterflowHeatExchanger
                 ExchangeHeat(dt, ref a, ref b, ActualConductance());
             }
 
+            // 3b. Shell: each moving packet leaks heat to (or draws it from) the building
+            //     body through the insulation. The body then exchanges with the room under
+            //     the vanilla structure-temperature sim.
+            ShellExchange(dt, ref a, ref b);
+
             // 4. Commit, bridge-style: add to output, then remove the planned mass from input.
             Commit(flow, primaryInputCell, primaryOutputCell, a);
             Commit(flow, secondaryInputCell, secondaryOutputCell, b);
@@ -207,6 +261,116 @@ namespace PlateCounterflowHeatExchanger
             if (!a.IsEmpty && !b.IsEmpty) return 0.5f * (a.Temperature + b.Temperature);
             if (!a.IsEmpty) return a.Temperature;
             return b.Temperature;
+        }
+
+        // Thermal conductivity of the third construction material. The finished building
+        // keeps the chosen element per recipe slot on Deconstructable.constructionElements
+        // (that is how deconstruction returns the exact materials); slot 2 is the insulator.
+        // ASSUMPTION (unverified against decompile): field name and per-slot ordering.
+        // Falls back to Ceramic with a warning rather than to zero, so a wrong read shows up
+        // in the log without silently making the shell perfect.
+        private float InsulatorConductivity()
+        {
+            Deconstructable dec = GetComponent<Deconstructable>();
+            Tag[] chosen = dec != null ? dec.constructionElements : null;
+            if (chosen != null && chosen.Length > 2)
+            {
+                Element ins = ElementLoader.GetElement(chosen[2]);
+                if (ins != null)
+                {
+                    if (DebugLog)
+                    {
+                        Debug.Log($"[PCHX] insulator={ins.id} k={ins.thermalConductivity} Gshell={ins.thermalConductivity * ShellFactor:F1}W/K");
+                    }
+                    return ins.thermalConductivity;
+                }
+            }
+            Debug.LogWarning("[PCHX] could not read the insulator material; assuming Ceramic");
+            return FallbackInsulatorConductivity;
+        }
+
+        // Each moving packet relaxes toward the body temperature through half the shell
+        // conductance (one side of the plate pack each). The energy the packets lose is
+        // handed to the structure in kilojoules, signed, via the same call the Aquatuner
+        // uses for its waste heat; the sim then conducts it to the room. Using the
+        // Aquatuner's source string puts the rate in the vanilla energy tooltip.
+        private void ShellExchange(float dt, ref Packet a, ref Packet b)
+        {
+            if (shellConductance <= 0f || construction == null)
+            {
+                return;
+            }
+
+            bool flowing = !a.IsEmpty || !b.IsEmpty;
+            if (!flowing)
+            {
+                idleShellTicks++;
+                if (idleShellTicks >= 2 && !shellIdleReported)
+                {
+                    GameComps.StructureTemperatures.ProduceEnergy(structureTemperature, 0f,
+                        STRINGS.BUILDING.STATUSITEMS.OPERATINGENERGY.PIPECONTENTS_TRANSFER, dt);
+                    shellIdleReported = true;
+                }
+                return;
+            }
+            idleShellTicks = 0;
+            shellIdleReported = false;
+
+            float tBody = construction.Temperature;
+            float g = 0.5f * shellConductance;
+            float qA = ShellLoss(dt, g, tBody, ref a);
+            float qB = ShellLoss(dt, g, tBody, ref b);
+            float joules = qA + qB;
+
+            GameComps.StructureTemperatures.ProduceEnergy(structureTemperature, joules / 1000f,
+                STRINGS.BUILDING.STATUSITEMS.OPERATINGENERGY.PIPECONTENTS_TRANSFER, dt);
+
+            if (DebugLog && shellTicks++ % LogEveryTicks == 0)
+            {
+                Debug.Log($"[PCHX] shell #{shellTicks}: Gshell={shellConductance:G4}W/K Tbody={tBody:F1}K " +
+                          $"qA={qA:F0}J qB={qB:F0}J -> body {joules / 1000f:F3}kJ");
+            }
+        }
+
+        // Heat one packet gives to the body this tick (J; negative = drawn from the body).
+        // Explicit step, clamped so the packet cannot overshoot the body temperature.
+        private static float ShellLoss(float dt, float g, float tBody, ref Packet p)
+        {
+            if (p.IsEmpty)
+            {
+                return 0f;
+            }
+            Element e = ElementLoader.FindElementByHash(p.Element);
+            if (e == null)
+            {
+                return 0f;
+            }
+            float c = p.Mass * 1000f * e.specificHeatCapacity; // J/K
+            if (c <= 0f)
+            {
+                return 0f;
+            }
+            float dT = p.Temperature - tBody;
+            float q = g * dt * dT;
+            float qMax = c * dT; // would bring the packet exactly to tBody
+            if (Mathf.Abs(q) > Mathf.Abs(qMax))
+            {
+                q = qMax;
+            }
+            p.Temperature -= q / c;
+            return q;
+        }
+
+        // Vanilla melt, invoked on plate temperature. DoMelt spawns the metal's liquid at
+        // its melting point in the building's cell with the metal's mass, posts the
+        // "building melted" notification, and destroys the object (deferred, so OnCleanUp
+        // runs after this updater returns and the flow manager's list is not modified
+        // mid-iteration). Gaskets and insulation are lost, as decided in the README.
+        private void Melt(float plateTemperature)
+        {
+            melted = true;
+            Debug.Log($"[PCHX] plates at {plateTemperature:F0}K exceed {construction.Element.id} melting point {meltTemperature:F0}K: melting");
+            StructureTemperatureComponents.DoMelt(construction);
         }
 
         // Clean wall and both deposits are thermal resistances in series:

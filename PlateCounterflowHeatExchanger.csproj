@@ -9,10 +9,10 @@
     <!-- We reference the game's DLLs; do not copy them next to our output. -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
 
-    <!-- EDIT THIS to your Mac's game install if it differs. -->
+    <!-- Local game installation path on my Mac. -->
     <GameManagedDir>$(HOME)/Library/Application Support/Steam/steamapps/common/OxygenNotIncluded/OxygenNotIncluded.app/Contents/Resources/Data/Managed</GameManagedDir>
 
-    <!-- Where the game loads in-development mods from. -->
+    <!-- Local in-development mod folder on my Mac. -->
     <ModsDevRoot>$(HOME)/Library/Application Support/unity.Klei.Oxygen Not Included/mods/Dev</ModsDevRoot>
     <ModInstallDir>$(ModsDevRoot)/PlateCounterflowHeatExchanger</ModInstallDir>
   </PropertyGroup>
@@ -48,9 +48,9 @@
     </Reference>
   </ItemGroup>
 
-  <!-- After a successful build, drop the DLL and both yaml files into the game's
-       Dev mods folder. Only runs if that folder exists, so it is a no-op on this
-       workspace and active on your Mac. -->
+  <!-- Development is done on Linux, but I build the mod and run ONI on my local Mac.
+       Only runs if that folder exists, so it is a no-op on the Linux box, but copies
+       the mod to the Dev mods folder on my Mac. -->
   <Target Name="InstallMod" AfterTargets="Build" Condition="Exists('$(ModsDevRoot)')">
     <MakeDir Directories="$(ModInstallDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModInstallDir)" />

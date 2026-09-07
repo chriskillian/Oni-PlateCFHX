@@ -27,17 +27,20 @@ namespace PlateCounterflowHeatExchanger
                 "metalrefinery_kanim",          // borrowed art (drawn for 3x4; looks tall for now)
                 100,                            // hit points
                 60f,                            // construction time (seconds)
-                // Parallel arrays: one mass per material tag (same form as SteamTurbineConfig2).
-                // Why refined metal + gaskets: README, "Build menu, research, and recipe".
-                new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f },
-                new string[] { "RefinedMetal", "BuildingGasket" },
+                // Parallel arrays, one mass per material tag (borrowed from SteamTurbineConfig2).
+                // See README, "Build menu, research, and recipe" for material input reasoning.
+                // Slot 0 (refined metal) is the PrimaryElement: it drives effectiveness,
+                // melting, and the body the sim conducts to the room. Slot 2 is the shell
+                // insulation; its conductivity sets room heat loss (README, "Shell heat").
+                new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f, BUILDINGS.CONSTRUCTION_MASS_KG.TIER3[0] },
+                new string[] { "RefinedMetal", "BuildingGasket", "Insulator" },
                 2400f,                          // melting point (K)
                 BuildLocationRule.OnFloor,
                 decor: BUILDINGS.DECOR.NONE,
                 noise: NOISE_POLLUTION.NONE);
 
             // Stream A's primary ports. Setting these on the def creates the port icons
-            // and network endpoints for free; we drive the flow through them by hand in
+            // and network endpoints for free. Flow is driven by hand in
             // HeatExchangerCore, so no ConduitConsumer/Dispenser is attached.
             def.InputConduitType = ConduitType.Liquid;
             def.OutputConduitType = ConduitType.Liquid;
@@ -46,10 +49,13 @@ namespace PlateCounterflowHeatExchanger
 
             def.Floodable = false;
             def.Overheatable = false;           // a heat exchanger is meant to run hot
+            // def.ThermalConductivity stays at the default: the measured body-to-room leg
+            // is two orders above any non-Insulite shell, so the insulation, not this
+            // value, limits room loss (README, "Shell heat", Calibration).
             def.AudioCategory = "Metal";
             def.ViewMode = OverlayModes.LiquidConduits.ID;
             GeneratedBuildings.RegisterWithOverlay(OverlayScreen.LiquidVentIDs, ID);
-            // Deliberately no EnergyConsumer / RequiresPowerInput: the device is passive.
+            // Passive heat exchanger, no EnergyConsumer / RequiresPowerInput is deliberate.
             return def;
         }
 
@@ -61,9 +67,9 @@ namespace PlateCounterflowHeatExchanger
         }
 
         // The secondary ports (stream B) declare themselves through ISecondaryInput/
-        // ISecondaryOutput. On the finished building HeatExchangerCore implements those;
-        // during placement and construction it does not exist yet, so attach lightweight
-        // marker components there so the port icons still show. (This mirrors GasFilter.)
+        // ISecondaryOutput. Implemented on the finished building by HeatExchangerCore.
+        // Doesnt exist during placement and construction, so attach lightweight
+        // marker components there to make the port icons show (see GasFilter).
         private void AttachSecondaryPorts(GameObject go)
         {
             go.AddComponent<ConduitSecondaryInput>().portInfo =
@@ -93,7 +99,7 @@ namespace PlateCounterflowHeatExchanger
             core.secondaryInputOffset = SecondaryInput;
             core.secondaryOutputOffset = SecondaryOutput;
 
-            // The cleaning errand: user-menu button, automatic trigger, and the duplicant
+            // Cleaning errand: user-menu button, automatic trigger, and the duplicant
             // work that empties the ledgers into debris.
             go.AddOrGet<FoulingCleanWorkable>();
         }
