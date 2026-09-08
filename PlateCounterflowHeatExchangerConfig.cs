@@ -90,9 +90,37 @@ namespace PlateCounterflowHeatExchanger
             AttachSecondaryPorts(go);
         }
 
+        // def.InputConduitType / OutputConduitType make the game attach a ConduitConsumer and
+        // RequireInputs / RequireOutputs to the completed-building prefab. We drive the cells by
+        // hand and warn per port ourselves, so none of them may live on the building. Remove
+        // them from the PREFAB, before any instance exists. Removing them per instance at spawn
+        // (the previous approach) was too late: Destroy is deferred to end of frame, so
+        // RequireInputs still ran its own OnSpawn and raised the vanilla "No Liquid Intake" /
+        // "Liquid Pipe Empty" items, then died with nothing left to clear them.
+        // DestroyImmediate on a prefab has no such race. Verified 2026-09-08: consumer,
+        // RequireInputs and RequireOutputs are all present here; no dispenser is ever attached.
+        private static void StripVanillaPlumbing(GameObject go)
+        {
+            StripComponent<ConduitConsumer>(go);
+            StripComponent<ConduitDispenser>(go);
+            StripComponent<RequireInputs>(go);
+            StripComponent<RequireOutputs>(go);
+        }
+
+        private static void StripComponent<T>(GameObject go) where T : Component
+        {
+            T c = go.GetComponent<T>();
+            Debug.Log("[PCHX] prefab " + typeof(T).Name + ": " + (c != null ? "removed" : "not present"));
+            if (c != null)
+            {
+                UnityEngine.Object.DestroyImmediate(c, true);
+            }
+        }
+
         public override void DoPostConfigureComplete(GameObject go)
         {
             go.GetComponent<KPrefabID>().AddTag(GameTags.OverlayBehindConduits);
+            StripVanillaPlumbing(go);
 
             // Drives both streams, exchanges heat between them, and keeps the fouling ledgers.
             HeatExchangerCore core = go.AddOrGet<HeatExchangerCore>();

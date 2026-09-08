@@ -45,9 +45,16 @@ here for the reasoning behind them.
   source, so it can be compared against the game as it changes.
 
 ## Geometry and ports
-Two liquid conduits, each with its own input and output. Conduit A runs along the
-bottom row left to right. Conduit B runs along the top row right to left, so the
-streams are geometrically counterflow.
+Two liquid streams, each with its own input and output port. Stream A runs along
+the bottom row left to right. Stream B runs along the top row right to left, so
+the streams are geometrically counterflow.
+
+Vocabulary, used consistently in the README, the code, and the player-facing
+text: a **stream** is one of the two fluid paths through the plates, A or B,
+including its pair of ports; it is still a stream when nothing is flowing. A
+**port** is one of the four cells where a pipe attaches. A **pipe** is the game's
+own liquid conduit; the word **conduit** appears only where it is the game API's
+term (`ConduitType`, `ConduitFlow`, the conduit tick).
 
 | Port | Offset | Position | Provided by |
 |---|---|---|---|
@@ -60,9 +67,10 @@ Offsets are horizontally centered: for a 3-wide building valid x offsets are -1,
 0, +1. y is bottom-origin. The four offsets are defined once in
 `PlateCounterflowHeatExchangerConfig` and read by everything else.
 
-Conduit A's ports come free with the def. Setting `InputConduitType` also
-auto-attaches a `ConduitConsumer`, which we destroy at spawn because we drive the
-cells by hand and it would null-reference without a `Storage`. Conduit B's ports
+Stream A's ports come free with the def. Setting `InputConduitType` also
+auto-attaches a `ConduitConsumer` (plus `RequireInputs`/`RequireOutputs`), which
+the config strips from the completed-building prefab because we drive the cells
+by hand and the consumer would null-reference without a `Storage`. Stream B's ports
 are declared by the core component through the secondary-port interfaces (icons
 and placement validation) and registered with the liquid network by the core
 itself (connectivity). Thin `ConduitSecondaryInput`/`Output` markers give the
@@ -166,24 +174,68 @@ The ×3 pacing change below is the second kind. The cleaning threshold
 is discussed under Deliberate choices, item 4.
 
 ### Fluids and byproducts
-| Fluid | Mechanism | f(T) | Byproduct |
-|---|---|---|---|
-| Polluted Water | biological | 1 below 345 K (72 °C pasteurization), else 0 | Dirt |
-| Salt Water | scaling | max(0, (T − 293)/80) | Salt |
-| Brine | scaling | as above, higher rate | Salt |
-| Crude Oil | coking | 2^((T − 373)/25) | Refined Carbon |
-| Petroleum | coking | as above, lower rate | Sulfur |
-| Water, Ethanol | none | | |
+Five temperature factors, wall temperature T in kelvin:
 
-Sulfur from petroleum follows the vanilla crude → petroleum → sour gas → sulfur
-chain. DLC fluids (Mucin will certainly foul; Naphtha, Resin, Nectar, Phyto Oil are
-candidates) are not in the table yet; see To do.
+| Mechanism | f(T) | Shape |
+|---|---|---|
+| biological | 1 below 345 K (72 °C pasteurization), else 0 | film grows until pasteurized |
+| scaling | max(0, (T − 293)/80) | inverse-solubility salts, rises with T |
+| coking | 2^((T − 373)/25) | Arrhenius stand-in, doubles every 25 K |
+| particulate | 1 | suspended solids settle regardless of T |
+| waxing | clamp01((323 − T)/60) | wax comes out on a cold wall; full at −10 °C, none at 50 °C |
+
+### Liquid classification
+Every liquid in the game's `elements/liquid.yaml` (52 entries, build U59, checked
+2026-09-08) was classified. Where the yaml names a solid that the liquid leaves
+behind on boiling (`highTempTransitionOreId`), that solid is the byproduct: the
+game already says what comes out of the liquid. Ids are the yaml `elementId`;
+several DLC liquids display under a different name (Brackene = `Milk`, Ovolene =
+`FishMilk`, Nectar = `SugarWater`, Mucin = `Mucus`, Polluted Brine = `MurkyBrine`;
+the `MilkFat` byproduct displays as Brackwax). Rates are kg deposit per kg fluid
+at f(T) = 1.
+
+| Liquid (id) | Mechanism | Byproduct | Rate | Basis |
+|---|---|---|---|---|
+| Polluted Water (`DirtyWater`) | biological | Dirt | 1.5e-4 | boils to Dirt 1% |
+| Mucin (`Mucus`) | biological | Slime | 3e-4 | boils to Polluted Water + Slime 30% |
+| Salt Water | scaling | Salt | 6e-5 | Salt 7% |
+| Brine | scaling | Salt | 2.1e-4 | Salt 30% |
+| Polluted Brine (`MurkyBrine`) | scaling | Salt | 2.1e-4 | Salt 30%; dual-mechanism, scaling chosen by mass |
+| Nectar (`SugarWater`) | scaling | Sucrose | 2e-4 | Sucrose 77%; sugar crystallizes on hot surfaces |
+| Crude Oil | coking | Refined Carbon | 3e-4 | |
+| Petroleum | coking | Sulfur | 6e-5 | vanilla crude → petroleum → sour gas → sulfur chain |
+| Naphtha | coking | Refined Carbon | 6e-5 | hydrocarbon, no ore field; coke is the default |
+| Gunk (`LiquidGunk`) | coking | Sulfur | 3e-4 | boils to Petroleum + Sulfur 8% |
+| Phyto Oil | coking | Algae | 1.5e-4 | boils to CO2 + Algae 67% at 75 °C, so f≈0.5 |
+| Biodiesel (`RefinedLipid`) | coking | Refined Carbon | 6e-5 | lipid gumming, low |
+| Resin | coking | Isoresin | 3e-4 | Isoresin 25%; the game cures resin with heat |
+| Natural Resin | coking | Refined Carbon | 3e-4 | Refined Carbon 25% |
+| Latex | coking | Rubber | 2e-4 | latex coagulates with heat |
+| Ink | particulate | Refined Carbon | 1e-4 | pigment; boils to Mucus + Refined Carbon 10% |
+| Brackene (`Milk`) | waxing | Brackwax (`MilkFat`) | 1.5e-4 | boils to Brine + wax 10% |
+| Ovolene (`FishMilk`) | waxing | Brackwax (`MilkFat`) | 1.5e-4 | boils to Steam + wax 10% |
+
+No entry, and why: Water, Ethanol, Super Coolant, Visco-Gel (pure or engineered);
+Liquid Sulfur, Liquid Phosphorus, Mercury, Molten Sucrose, every molten metal,
+Molten Glass, Molten Salt, Liquid Carbon (single substances); Magma and Liquid
+Uranium (the melt rule's territory); Nuclear Waste (a radioactive sludge deposit
+would be an invention, not physics; decided 2026-09-08); Chlorine and the
+cryogens Oxygen, Hydrogen, Methane, Carbon Dioxide, Propane (nothing dissolved);
+Liquid Helium and Molten Syngas are disabled in the yaml.
+
+Only two liquids carry a Spaced Out `dlcId` in the yaml (Liquid Uranium, Nuclear
+Waste); every other DLC liquid is in the base file unmarked, so availability is
+decided by world generation, and a table entry for an absent liquid is harmless.
+The cleaning spawn skips a byproduct whose element lookup fails.
+
+Waxing reference: Bott, *Fouling of Heat Exchangers* (1995), solidification
+fouling; paraffin deposition in crude pipelines is the textbook cold-wall case.
 
 ### Pacing
 Asymptotic deposit = deposition rate × τ, so scaling every rate up and τ down by
 the same factor speeds the whole system up without moving any equilibrium. The
 first test ran at τ = 1800 s with rates a third of the current ones: physically
-sane, but a throttled brine loop took about 41 cycles to reach 50% fouling.
+sane, but a throttled brine loop took about 58 cycles to reach 50% fouling.
 Factor 3 applied: τ = 600 s, a throttled copper brine loop now reaches 50% in
 about 19 cycles, and full-flow brine still settles near 27% at a 322 K wall.
 
@@ -241,17 +293,24 @@ building description, which the codex shows). Tooltip lines are kept under about
 80 characters with explicit breaks: the side-panel status tooltip sizes itself to
 its longest line rather than wrapping, and the first paragraph-length version ran
 off both edges of the screen (check f, 2026-09-07); **Cleaning ordered** while a chore is
-pending. Three warning (`BadMinor`) items, drawn in the warning colour: **Needs cleaning** when fouling is
+pending. Three warning (`BadMinor`) items, rendered as red text with an exclamation icon: **Needs cleaning** when fouling is
 past the threshold with no order pending (the cancelled-order case); **No pipe:
 &lt;port&gt;**, one item per port, whenever that port cell has no pipe segment (the
 same `HasConduit` test that stops the stream, so warning and behaviour agree).
 Four fixed-text items rather than one with a list because the world hover card
 shows status names only, so the name itself has to say which port (check c,
 2026-09-07, found the single-item version uninformative there). The vanilla
-`RequireInputs`/`RequireOutputs` components the def attaches are removed at spawn
-with the consumer and dispenser: they covered stream A's ports only, the input
-one went inert when the consumer was destroyed, and the output one duplicated
-ours; **Output near phase change** when an outlet leaves within 2 K of its
+`RequireInputs`/`RequireOutputs` components the def attaches are stripped from
+the prefab with the consumer and dispenser: they covered stream A's ports only,
+the input one went inert when the consumer was destroyed, and the output one
+duplicated ours. Stripping must happen on the prefab, not per instance at spawn:
+`Destroy` is deferred to end of frame, so a `RequireInputs` destroyed at spawn
+still ran its own `OnSpawn` that frame and left "No Liquid Intake" and "Liquid
+Pipe Empty" behind permanently (check c, second build). The prefab strip was
+confirmed by log on 2026-09-08 and the spawn-time fallback removed. Note for any
+future status cleanup: `RemoveStatusItem(StatusItem)` throws for items created
+with `allow_multiples = true` (vanilla `NeedLiquidOut` is one); those need the
+Guid from `AddStatusItem`; **Output near phase change** when an outlet leaves within 2 K of its
 fluid's listed freezing or boiling point, held for 5 s after the last hit so it
 does not flicker. The sim only changes an element's state 3 K beyond the listed
 point and then rebounds 1.5 K toward it (Klei's stand-in for latent heat, and a
@@ -462,7 +521,7 @@ translation.
 | `HeatExchangerCore.cs` | Both streams: plan / melt check / foul / exchange / shell / commit; secondary ports; fouling ledgers; status item |
 | `Fouling.cs` | Fouling table, temperature factors, the per-tick deposition/removal step |
 | `FoulingCleanWorkable.cs` | Cleaning errand: button, automatic trigger, work lifecycle, debris |
-| `PCHXStatusItems.cs` | The five status items, their string callbacks, and the add/remove toggle helper |
+| `PCHXStatusItems.cs` | The five kinds of status item (eight objects: one per port for the pipe warning), their string callbacks, and the add/remove toggle helper |
 | `PCHXChores.cs` | The Clean Plates chore type, built from `EmptyStorage`'s groups and priorities |
 | `mod.yaml`, `mod_info.yaml` | Mod manifest. `supportedContent` is obsolete; omitting the DLC lists means "runs everywhere" |
 
@@ -509,10 +568,10 @@ fastest test rig: it fouls to the 50% threshold in about four cycles.
 - Shell heat, insulation slot, and melt rule: builds clean and loads. Three-slot
   recipe renders; picker offers all five insulators. Shell step verified by hand
   on the first tick (Ceramic fallback on a two-material building, 930 W/K; signs
-  and magnitudes of both packet terms match). Still to verify: body temperature
-  settling point against room (the vanilla-leg measurement; cold-water run in
-  progress, body tracks a cooling footprint, air reading needed to fix the leg).
-  Tooltip heat line checked: not shown (cosmetic, see Verification plan).
+  and magnitudes of both packet terms match). Body settling point against room:
+  measured, see the shell calibration bullet (body tracks footprint air within
+  0.1 K; insulation is the limiter). Tooltip heat line checked: not shown
+  (cosmetic, see Verification plan).
   ~~insulator read~~ verified. Melt on magma verified (see Shell heat,
   Verification plan).
 
@@ -526,22 +585,34 @@ fastest test rig: it fouls to the 50% threshold in about four cycles.
   pipe: <port>" item names that port and clears when re-piped, with no vanilla
   "No liquid output" alongside (first version, 2026-09-07: the item appeared but
   the hover card did not name the port, and stream A's output also raised the
-  vanilla item; reworked, unbuilt); (d) run 275 K water against
+  vanilla item; second build: all four per-port names correct, but destroying
+  `RequireInputs` at spawn left permanent vanilla "No Liquid Intake" and
+  "Liquid Pipe Empty" items; components now stripped from the prefab, unbuilt.
+  Third build: crash on load from the fallback scrub, because `NeedLiquidOut`
+  allows multiple instances and can only be removed by Guid. Its log confirmed
+  the prefab strip (consumer, RequireInputs, RequireOutputs removed; dispenser
+  never present), so the whole fallback was deleted. Fourth build, 2026-09-08:
+  loads clean, no vanilla intake or empty-pipe items; per-port items verified
+  on the second build and unchanged since. Verified); (d) run 275 K water against
   a cold brine stream until the water outlet nears 273 K: "Output near phase
   change" names the stream and both temperatures, clears within 5 s of the
   outlet warming (verified with the 5 K margin: fired with water out at 272.0 K,
-  cleared after brine was warmed to 344 K; margin then cut to 2 K, unbuilt); (e) the errand shows as "Clean Plates" in the building's
+  cleared after brine was warmed to 344 K; margin then cut to 2 K; built, not yet re-verified at 2 K); (e) the errand shows as "Clean Plates" in the building's
   errand list and the duplicant's status reads "Cleaning heat exchanger plates",
   with no fallback warning in the log (verified); (f) after the strings refactor every text
   still renders (building name and description, all status items, both
   buttons, deposit list) with no raw `STRINGS.` keys showing, and every tooltip
   fits on screen (first build: the fouling tooltip overran both edges; lines
-  shortened, unbuilt); (g) the log has no
+  shortened; second build: fits, deposit list visible, verified); (g) the log has no
   "Localization.Initialize not found" or "could not patch" warning.
 
 ## To do
-Polish batch of 2026-09-07 verified except the per-port pipe warning and tooltip
-fit, which await the next build (see Verification record).
+Polish batch of 2026-09-07 fully verified as of 2026-09-08 (see Verification
+record). Release decisions (2026-09-08): `DebugLog` stays on until the liquid
+classification work is done and is flipped off as the last edit before a public
+release; the "[PCHX] acceptance mismatch" warning is kept permanently (silent
+unless the game's pipe acceptance rule changes); the PLib options menu is
+deferred, a plain constant covers a fouling switch until someone asks.
 
 **Player-facing**
 - Mod options menu: a switch to disable fouling entirely, and a slider for
@@ -549,21 +620,23 @@ fit, which await the next build (see Verification record).
   is usable for options alone even though we avoid it for conduits.
 - Localization, stage 2: load our own `translations/<locale>.po` and generate a
   `.pot` template (see Localization for the signatures still needed). Stage 1,
-  the `STRINGS` tree registered for translation, is written (unbuilt).
+  the `STRINGS` tree registered for translation, is built and verified (check f, 2026-09-07).
 - Codex: the game's automatic Database entry exists (verified 2026-09-07: art,
   DESC, and recipe all shown), so DESC now carries a three-paragraph summary of
-  the model (unbuilt). A custom section (diagram, fouling curve) would need the
+  the model (verified in game 2026-09-07). A custom section (diagram, fouling curve) would need the
   codex generator decompiled; low priority.
 - Custom art (kanim tooling is Windows-centric; deferred).
 
 **Model**
 - Shell heat, insulation slot, and plate melt rule: built and verified; calibration
-  closed with `ShellFactor = 1500` and default `def.ThermalConductivity`. Rebuild
-  pending for the `G4` shell-log format fix (Insulite prints 0.0 W/K under F1).
-- Classify every liquid in the game, base and DLC, for its deposit type or none
-  (Mucin first). `SimHashes` carries DLC members regardless of enabled DLCs, so
-  unconditional entries compile; still owed a runtime check that a disabled-DLC
-  element lookup cannot throw. Decision (2026-09-07): the list of fouling fluids
+  closed with `ShellFactor = 1500` and default `def.ThermalConductivity`. The
+  `G4` shell-log format fix is built and verified (Insulite prints 0.015 W/K).
+- Liquid classification: written 2026-09-08 for all 52 yaml liquids (see Fouling
+  model, Liquid classification), unbuilt. Compile risk: the 18 new `SimHashes`
+  names. Verify in game: one new liquid per curve (Brackene for waxing, Ink for
+  particulate) fouls at the modelled rate and drops the right chunk. The cleaning
+  spawn already skips a missing element silently; a `LogWarning` there would be
+  better (FoulingCleanWorkable, user's call). Decision (2026-09-07): the list of fouling fluids
   stays out of player-facing text. It would be unworkable in a tooltip once
   complete, and which fluids foul is left to player discovery; the description
   and tooltip name only the mechanisms (scaling, coking, biological growth).

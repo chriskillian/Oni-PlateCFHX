@@ -113,14 +113,6 @@ namespace PlateCounterflowHeatExchanger
                     public static LocString NAME = "No pipe: Stream B output (top-left)";
                     public static LocString TOOLTIP = "Connect a liquid pipe to this port.\nA stream with a missing port does not flow.";
                 }
-
-                public static class PCHX_PHASECHANGERISK
-                {
-                    public static LocString NAME = "Output near phase change";
-                    public static LocString TOOLTIP =
-                        "{Detail}\n\nA fluid that freezes or boils inside a pipe breaks the pipe. " +
-                        "Throttle a stream, or bring the other stream's inlet closer in temperature.";
-                }
             }
         }
 

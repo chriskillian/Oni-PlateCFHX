@@ -53,17 +53,47 @@ namespace PlateCounterflowHeatExchanger
         // Coking: a mild Arrhenius stand-in, doubling every 25 K, equal to 1 at 100 C.
         private static float Coking(float t) => Mathf.Pow(2f, (t - 373f) / 25f);
 
-        // Fluids not listed here do not foul (Water, Ethanol, and anything unexpected).
-        // Base-game liquids only; DLC fluids are a README to-do. SimHashes carries DLC
-        // members regardless of enabled DLCs, so unconditional entries compile.
+        // Particulate: suspended solids settle whatever the temperature.
+        private static float Particulate(float t) => 1f;
+
+        // Waxing: dissolved wax comes out on a cold wall, the mirror image of scaling. Full
+        // strength at -10 C and below, none at 50 C and above (Brackene boils at 80 C).
+        private static float Waxing(float t) => Mathf.Clamp01((323f - t) / 60f);
+
+        // Every liquid in the game's elements/liquid.yaml was classified (README, "Fouling
+        // model", Liquid classification). Fluids not listed here do not foul: pure or
+        // engineered liquids, molten metals, cryogens. Ids are the yaml elementId, which
+        // for several DLC liquids differs from the display name (Brackene = Milk, Ovolene =
+        // FishMilk, Nectar = SugarWater, Mucin = Mucus, Polluted Brine = MurkyBrine, and the
+        // MilkFat byproduct displays as Brackwax). SimHashes carries every yaml element
+        // regardless of enabled DLCs, so unconditional entries compile and a liquid that
+        // never appears simply never matches.
         private static readonly Dictionary<SimHashes, FoulingSpec> Table = new Dictionary<SimHashes, FoulingSpec>
         {
-            // Rates are kg deposit per kg fluid at f(T) = 1.
-            { SimHashes.DirtyWater, new FoulingSpec(1.5e-4f, Biological, SimHashes.Dirt) },
-            { SimHashes.SaltWater,  new FoulingSpec(6e-5f,   Scaling,    SimHashes.Salt) },
-            { SimHashes.Brine,      new FoulingSpec(2.1e-4f, Scaling,    SimHashes.Salt) },
-            { SimHashes.CrudeOil,   new FoulingSpec(3e-4f,   Coking,     SimHashes.RefinedCarbon) },
-            { SimHashes.Petroleum,  new FoulingSpec(6e-5f,   Coking,     SimHashes.Sulfur) },
+            // Rates are kg deposit per kg fluid at f(T) = 1. Where the yaml names a solid the
+            // liquid leaves behind on boiling (highTempTransitionOreId), that is the byproduct.
+            { SimHashes.DirtyWater,   new FoulingSpec(1.5e-4f, Biological,  SimHashes.Dirt) },
+            { SimHashes.Mucus,        new FoulingSpec(3e-4f,   Biological,  SimHashes.SlimeMold) },
+
+            { SimHashes.SaltWater,    new FoulingSpec(6e-5f,   Scaling,     SimHashes.Salt) },
+            { SimHashes.Brine,        new FoulingSpec(2.1e-4f, Scaling,     SimHashes.Salt) },
+            { SimHashes.MurkyBrine,   new FoulingSpec(2.1e-4f, Scaling,     SimHashes.Salt) },
+            { SimHashes.SugarWater,   new FoulingSpec(2e-4f,   Scaling,     SimHashes.Sucrose) },
+
+            { SimHashes.CrudeOil,     new FoulingSpec(3e-4f,   Coking,      SimHashes.RefinedCarbon) },
+            { SimHashes.Petroleum,    new FoulingSpec(6e-5f,   Coking,      SimHashes.Sulfur) },
+            { SimHashes.Naphtha,      new FoulingSpec(6e-5f,   Coking,      SimHashes.RefinedCarbon) },
+            { SimHashes.LiquidGunk,   new FoulingSpec(3e-4f,   Coking,      SimHashes.Sulfur) },
+            { SimHashes.PhytoOil,     new FoulingSpec(1.5e-4f, Coking,      SimHashes.Algae) },
+            { SimHashes.RefinedLipid, new FoulingSpec(6e-5f,   Coking,      SimHashes.RefinedCarbon) },
+            { SimHashes.Resin,        new FoulingSpec(3e-4f,   Coking,      SimHashes.Isoresin) },
+            { SimHashes.NaturalResin, new FoulingSpec(3e-4f,   Coking,      SimHashes.RefinedCarbon) },
+            { SimHashes.Latex,        new FoulingSpec(2e-4f,   Coking,      SimHashes.Rubber) },
+
+            { SimHashes.Ink,          new FoulingSpec(1e-4f,   Particulate, SimHashes.RefinedCarbon) },
+
+            { SimHashes.Milk,         new FoulingSpec(1.5e-4f, Waxing,      SimHashes.MilkFat) },
+            { SimHashes.FishMilk,     new FoulingSpec(1.5e-4f, Waxing,      SimHashes.MilkFat) },
         };
 
         public static bool TryGetSpec(SimHashes fluid, out FoulingSpec spec) => Table.TryGetValue(fluid, out spec);

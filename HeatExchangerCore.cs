@@ -146,20 +146,10 @@ namespace PlateCounterflowHeatExchanger
         {
             base.OnSpawn();
 
-            // Declaring def.InputConduitType auto-attaches a ConduitConsumer (and the output
-            // side may attach a ConduitDispenser). We drive both primary cells by hand, so
-            // those components have no Storage to feed and would NRE in Consume on the first
-            // packet. Remove them. The def's port icons and network endpoints stay — they
-            // come from the def, not these components (same as ConduitBridge, which also
-            // never registers its own endpoints).
-            RemoveIfPresent<ConduitConsumer>();
-            RemoveIfPresent<ConduitDispenser>();
-            // The def's conduit types also attach RequireInputs/RequireOutputs, which raise
-            // the vanilla "No liquid input/output" items for stream A's ports only (and the
-            // input one went inert with the consumer). We warn per port for both streams
-            // ourselves (RefreshPortStatus), so drop them to avoid a duplicate for A.
-            RemoveIfPresent<RequireInputs>();
-            RemoveIfPresent<RequireOutputs>();
+            // The vanilla ConduitConsumer / RequireInputs / RequireOutputs that the def's
+            // conduit types attach are stripped from the prefab by the config
+            // (StripVanillaPlumbing), so no instance ever has them. The def's port icons and
+            // network endpoints do not depend on them (same as ConduitBridge).
 
             // Primary cells are rotation-adjusted for us by Building.
             primaryInputCell = building.GetUtilityInputCell();
@@ -225,15 +215,6 @@ namespace PlateCounterflowHeatExchanger
             mgr.RemoveFromNetworks(secondaryInputCell, secondaryInputItem, true);
             mgr.RemoveFromNetworks(secondaryOutputCell, secondaryOutputItem, true);
             base.OnCleanUp();
-        }
-
-        private void RemoveIfPresent<T>() where T : Component
-        {
-            T c = GetComponent<T>();
-            if (c != null)
-            {
-                Destroy(c);
-            }
         }
 
         private void ConduitUpdate(float dt)
@@ -408,7 +389,7 @@ namespace PlateCounterflowHeatExchanger
         // its melting point in the building's cell with the metal's mass, posts the
         // "building melted" notification, and destroys the object (deferred, so OnCleanUp
         // runs after this updater returns and the flow manager's list is not modified
-        // mid-iteration). Gaskets and insulation are lost, as decided in the README.
+        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and insulation become metal too (README, "Shell heat").
         private void Melt(float plateTemperature)
         {
             melted = true;
