@@ -119,8 +119,19 @@ namespace PlateCounterflowHeatExchanger
         // behind a closed valve. Not saved: a reloaded chore re-raises it when work resumes.
         public bool FlowBlocked { get; set; }
 
-        // Handle for the always-on "Fouling: N%" status item.
+        // Handles for the always-on "Fouling: N%" and "Flow: A .., B .." status items.
         private System.Guid foulingStatus;
+        private System.Guid flowStatus;
+
+        // Flow readout. The game's Accumulators average whatever is fed to a handle over a
+        // 3 s window (accumulated / 3 every 3 s, then reset), so a stopped stream reads zero
+        // within one window with no further calls. Fed the accepted mass in Commit.
+        private HandleVector<int>.Handle flowAccumulatorA = HandleVector<int>.InvalidHandle;
+        private HandleVector<int>.Handle flowAccumulatorB = HandleVector<int>.InvalidHandle;
+
+        // ε of the most recent tick on which both streams flowed; negative when the last tick
+        // had one stream idle (no exchange to report).
+        private float lastEffectiveness = -1f;
 
         // Warning status items (README, "Cleaning", status items). Ports: a pipe is missing
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
@@ -200,11 +211,20 @@ namespace PlateCounterflowHeatExchanger
             // callbacks can read the live ledgers each time the panel refreshes.
             selectable = GetComponent<KSelectable>();
             foulingStatus = selectable.AddStatusItem(PCHXStatusItems.Fouling, this);
+
+            // Flow readout: one accumulator per stream (Add ignores its arguments beyond
+            // allocating the slot), and the status item whose callbacks read them.
+            flowAccumulatorA = Game.Instance.accumulators.Add("PCHX flow A", this);
+            flowAccumulatorB = Game.Instance.accumulators.Add("PCHX flow B", this);
+            flowStatus = selectable.AddStatusItem(PCHXStatusItems.Flow, this);
         }
 
         protected override void OnCleanUp()
         {
             selectable.RemoveStatusItem(foulingStatus);
+            selectable.RemoveStatusItem(flowStatus);
+            flowAccumulatorA = Game.Instance.accumulators.Remove(flowAccumulatorA);
+            flowAccumulatorB = Game.Instance.accumulators.Remove(flowAccumulatorB);
             for (int i = 0; i < noPipeStatus.Length; i++)
             {
                 PCHXStatusItems.Toggle(selectable, PCHXStatusItems.NoPipe[i], false, this, ref noPipeStatus[i]);
@@ -264,7 +284,11 @@ namespace PlateCounterflowHeatExchanger
             //    unchanged, like a bridge; an exchanger with one side stopped is just a pipe.
             if (!a.IsEmpty && !b.IsEmpty)
             {
-                ExchangeHeat(dt, ref a, ref b, ActualConductance());
+                ExchangeHeat(dt, ref a, ref b, ActualConductance()); // sets lastEffectiveness
+            }
+            else
+            {
+                lastEffectiveness = -1f;
             }
 
             // 3b. Shell: each moving packet leaks heat to (or draws it from) the building
@@ -276,9 +300,21 @@ namespace PlateCounterflowHeatExchanger
             RefreshPhaseStatus(a, b);
 
             // 4. Commit, bridge-style: add to output, then remove the planned mass from input.
-            Commit(flow, primaryInputCell, primaryOutputCell, a);
-            Commit(flow, secondaryInputCell, secondaryOutputCell, b);
+            //    What the output accepted is what actually flowed; feed it to the readout.
+            float movedA = Commit(flow, primaryInputCell, primaryOutputCell, a);
+            float movedB = Commit(flow, secondaryInputCell, secondaryOutputCell, b);
+            Game.Instance.accumulators.Accumulate(flowAccumulatorA, movedA);
+            Game.Instance.accumulators.Accumulate(flowAccumulatorB, movedB);
         }
+
+        // ---- Flow readout (read by PCHXStatusItems.Flow) ----
+
+        // Mass per second through each stream, averaged over the game's 3 s window.
+        public float FlowRateA => Game.Instance.accumulators.GetAverageRate(flowAccumulatorA);
+        public float FlowRateB => Game.Instance.accumulators.GetAverageRate(flowAccumulatorB);
+
+        // ε of the last tick on which both streams flowed, or negative if one was idle.
+        public float LastEffectiveness => lastEffectiveness;
 
         private static float WallTemperature(Packet a, Packet b)
         {
@@ -568,11 +604,12 @@ namespace PlateCounterflowHeatExchanger
         // fouling deposited or returned, so mass is conserved across fluid + deposit.
         // Because PlanTransfer mirrored the acceptance rule, accepted should equal p.Mass; a
         // shortfall means our prediction and the game's rule disagree, so log it loudly.
-        private static void Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
+        // Returns the mass the output cell accepted (what actually moved this tick).
+        private static float Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
         {
             if (p.IsEmpty)
             {
-                return;
+                return 0f;
             }
             float accepted = flow.AddElement(
                 outCell, p.Element, p.Mass, p.Temperature, p.DiseaseIdx, p.DiseaseCount);
@@ -584,6 +621,7 @@ namespace PlateCounterflowHeatExchanger
             {
                 Debug.LogWarning($"[PCHX] acceptance mismatch: planned {p.Mass:F3} kg, output took {accepted:F3} kg");
             }
+            return accepted;
         }
 
         // Counterflow heat exchange between the two moving packets for one tick, by the
@@ -631,6 +669,7 @@ namespace PlateCounterflowHeatExchanger
                 eps = (1f - ex) / (1f - cr * ex);
             }
             eps = Mathf.Clamp01(eps);
+            lastEffectiveness = eps;
 
             float tHot = Mathf.Max(a.Temperature, b.Temperature);
             float tCold = Mathf.Min(a.Temperature, b.Temperature);

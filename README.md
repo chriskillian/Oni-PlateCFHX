@@ -200,7 +200,7 @@ at f(T) = 1.
 | Mucin (`Mucus`) | biological | Slime | 3e-4 | boils to Polluted Water + Slime 30% |
 | Salt Water | scaling | Salt | 6e-5 | Salt 7% |
 | Brine | scaling | Salt | 2.1e-4 | Salt 30% |
-| Polluted Brine (`MurkyBrine`) | scaling | Salt | 2.1e-4 | Salt 30%; dual-mechanism, scaling chosen by mass |
+| Polluted Brine (`MurkyBrine`) | scaling | Salt | 2.1e-4 | Salt 30%; also biological in reality, single mechanism by decision (below) |
 | Nectar (`SugarWater`) | scaling | Sucrose | 2e-4 | Sucrose 77%; sugar crystallizes on hot surfaces |
 | Crude Oil | coking | Refined Carbon | 3e-4 | |
 | Petroleum | coking | Sulfur | 6e-5 | vanilla crude → petroleum → sour gas → sulfur chain |
@@ -222,6 +222,13 @@ Uranium (the melt rule's territory); Nuclear Waste (a radioactive sludge deposit
 would be an invention, not physics; decided 2026-09-08); Chlorine and the
 cryogens Oxygen, Hydrogen, Methane, Carbon Dioxide, Propane (nothing dissolved);
 Liquid Helium and Molten Syngas are disabled in the yaml.
+
+Polluted Brine stays a single-mechanism entry (decided 2026-09-08). A second,
+biological spec would add a two-specs-per-liquid structure for a narrow effect:
+scaling is near zero below about 30 °C and biological growth stops above 72 °C,
+so the only behaviour change would be cold Polluted Brine fouling slowly with
+Dirt instead of not at all. Not worth the complexity on its own; open to player
+feedback.
 
 Only two liquids carry a Spaced Out `dlcId` in the yaml (Liquid Uranium, Nuclear
 Waste); every other DLC liquid is in the base file unmarked, so availability is
@@ -319,6 +326,19 @@ so 2 K past the listed value is 5 K of real headroom. Verified 2026-09-07: water
 left at 272.0 K, below its listed 273.15 K, and stayed liquid. The exchanger can push a fluid past a transition and the output pipe
 then breaks under the vanilla rule; we warn rather than clamp, because clamping
 would create heat from nothing.
+
+### Flow readout
+A second always-on status item, "Flow: A &lt;rate&gt;, B &lt;rate&gt;", so both rates show on
+the world hover card without opening the side panel (decided 2026-09-08). Rates
+come from two `Game.Instance.accumulators` handles, one per stream, fed the mass
+the output cell accepted in `Commit`; that is what actually moved, not the pipe
+contents. The game averages each handle over a fixed 3 s window (accumulated ÷ 3,
+then reset), so a stopped stream reads zero within one window with no extra calls,
+and at the 1 s conduit tick each reading is the mean of exactly three ticks. Rates
+are formatted in kilograms always, so the two numbers compare at a glance. The
+tooltip names the ports and shows the effectiveness ε of the last tick on which
+both streams flowed, or "none (one stream idle)"; ε is the number that tells a
+player what throttling bought them and what fouling has cost.
 
 ## Shell heat, insulation, and melting
 Designed 2026-09-07 from decompiled `AirConditioner`, `StructureTemperatureComponents`,
@@ -521,7 +541,7 @@ translation.
 | `HeatExchangerCore.cs` | Both streams: plan / melt check / foul / exchange / shell / commit; secondary ports; fouling ledgers; status item |
 | `Fouling.cs` | Fouling table, temperature factors, the per-tick deposition/removal step |
 | `FoulingCleanWorkable.cs` | Cleaning errand: button, automatic trigger, work lifecycle, debris |
-| `PCHXStatusItems.cs` | The five kinds of status item (eight objects: one per port for the pipe warning), their string callbacks, and the add/remove toggle helper |
+| `PCHXStatusItems.cs` | The six kinds of status item (nine objects: one per port for the pipe warning), their string callbacks, and the add/remove toggle helper |
 | `PCHXChores.cs` | The Clean Plates chore type, built from `EmptyStorage`'s groups and priorities |
 | `mod.yaml`, `mod_info.yaml` | Mod manifest. `supportedContent` is obsolete; omitting the DLC lists means "runs everywhere" |
 
@@ -606,6 +626,19 @@ fastest test rig: it fouls to the 50% threshold in about four cycles.
   shortened; second build: fits, deposit list visible, verified); (g) the log has no
   "Localization.Initialize not found" or "could not patch" warning.
 
+- Liquid classification, 2026-09-08 (thermium/Insulite rig, 2 kg/s each side):
+  all 18 new `SimHashes` names compiled. Ink vs Brackene: Ink deposited 0.2 g/tick
+  (particulate, f = 1) and Brackene 0.039 g/tick at wall 315.2 K (waxing f = 0.13);
+  both ledgers, G (284,641 vs 284,650 by hand) and the ε = 1 outlet temperatures
+  matched the model; cleaning dropped Refined Carbon and Brackwax chunks. Brackene
+  280 K vs Water 300 K: wall 290 K, f = 0.55, deposition 0.165 g/tick, ε 0.980 at
+  NTU 34 / Cr 0.981, outlets matched; re-run from a fresh clean gave 4.9 g per 30
+  ticks twice in a row (model 4.94 g). Warm run, Water 339.5 K vs Brackene
+  299.8 K: wall 319.7 K, f = 0.056, 0.5 g per 30 ticks over three intervals
+  (model 0.50 g). Three points on the waxing line match; the exact cutoff at
+  323 K was not reached. The re-arm test passed again on the ceramic
+  brine rig (auto order at 50%, clean, re-armed, next crossing fired).
+
 ## To do
 Polish batch of 2026-09-07 fully verified as of 2026-09-08 (see Verification
 record). Release decisions (2026-09-08): `DebugLog` stays on until the liquid
@@ -631,17 +664,22 @@ deferred, a plain constant covers a fouling switch until someone asks.
 - Shell heat, insulation slot, and plate melt rule: built and verified; calibration
   closed with `ShellFactor = 1500` and default `def.ThermalConductivity`. The
   `G4` shell-log format fix is built and verified (Insulite prints 0.015 W/K).
-- Liquid classification: written 2026-09-08 for all 52 yaml liquids (see Fouling
-  model, Liquid classification), unbuilt. Compile risk: the 18 new `SimHashes`
-  names. Verify in game: one new liquid per curve (Brackene for waxing, Ink for
-  particulate) fouls at the modelled rate and drops the right chunk. The cleaning
-  spawn already skips a missing element silently; a `LogWarning` there would be
+- Liquid classification: written and verified 2026-09-08 for all 52 yaml liquids
+  (see Fouling model, Liquid classification, and the Verification record). The
+  cleaning spawn skips a missing element silently; a `LogWarning` there would be
   better (FoulingCleanWorkable, user's call). Decision (2026-09-07): the list of fouling fluids
   stays out of player-facing text. It would be unworkable in a tooltip once
   complete, and which fluids foul is left to player discovery; the description
   and tooltip name only the mechanisms (scaling, coking, biological growth).
-- Flow-rate readout in the tooltip via the game's `accumulators`, as
-  `ConduitBridge` does.
+- Flow-rate readout: written 2026-09-08, unbuilt (see Cleaning, Flow readout).
+  Compile risks: `GameUtil.GetFormattedMass(float, GameUtil.TimeSlice, GameUtil.MetricMassFormat)`
+  parameter order and the `MetricMassFormat.Kilogram` member; `HandleVector<int>.Handle`
+  and `InvalidHandle`; `Game.Instance.accumulators`. Verify: (a) name reads
+  "Flow: A 2 kg/s, B 10 kg/s" against valves set so, on the hover card and the side
+  panel; (b) shut one valve: that rate reads 0 within 3 s and effectiveness reads
+  "none (one stream idle)"; (c) during a clean both read 0; (d) tooltip effectiveness
+  matches the log's eps; (e) a partial-flow stream (blocked output) shows the
+  accepted mass, not the pipe contents.
 
 **Release**
 - `DebugLog = false`.

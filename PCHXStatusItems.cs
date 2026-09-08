@@ -15,6 +15,7 @@ namespace PlateCounterflowHeatExchanger
     public static class PCHXStatusItems
     {
         public static StatusItem Fouling;
+        public static StatusItem Flow;               // always on: both stream rates in the name
         public static StatusItem CleaningOrdered;
         public static StatusItem NeedsCleaning;      // yellow: past threshold, no order pending
         public static StatusItem[] NoPipe = new StatusItem[4]; // yellow, one per port (PortIndex order)
@@ -39,6 +40,16 @@ namespace PlateCounterflowHeatExchanger
 
         private static string Threshold() =>
             GameUtil.GetFormattedPercent(FoulingCleanWorkable.AutoCleanThresholdPercent);
+
+        // Always kilograms: liquid flows are 0-10 kg/s and a unit switch to grams at low
+        // flow would make the two rates in the name hard to compare at a glance.
+        private static string Rate(float kgPerSecond) =>
+            GameUtil.GetFormattedMass(kgPerSecond, GameUtil.TimeSlice.PerSecond, GameUtil.MetricMassFormat.Kilogram);
+
+        private static string Effectiveness(HeatExchangerCore core) =>
+            core.LastEffectiveness < 0f
+                ? (string)STRINGS.UI.PCHX.NO_EXCHANGE
+                : GameUtil.GetFormattedPercent(core.LastEffectiveness * 100f);
 
         public static void Create()
         {
@@ -66,6 +77,28 @@ namespace PlateCounterflowHeatExchanger
                     .Replace("{Fouling}", Percent(core))
                     .Replace("{Threshold}", Threshold())
                     .Replace("{Deposits}", core.DescribeDeposits());
+            };
+
+            Flow = new StatusItem(
+                "PCHX_Flow", "BUILDING", "",
+                StatusItem.IconType.Info, NotificationType.Neutral,
+                false, OverlayModes.LiquidConduits.ID);
+            Flow.resolveStringCallback = (str, data) =>
+            {
+                var core = data as HeatExchangerCore;
+                if (core == null) return str;
+                return str.Replace("{FlowA}", Rate(core.FlowRateA)).Replace("{FlowB}", Rate(core.FlowRateB));
+            };
+            Flow.resolveTooltipCallback = (str, data) =>
+            {
+                var core = data as HeatExchangerCore;
+                if (core == null) return str;
+                return str
+                    .Replace("{StreamA}", STRINGS.UI.PCHX.STREAM_A)
+                    .Replace("{StreamB}", STRINGS.UI.PCHX.STREAM_B)
+                    .Replace("{FlowA}", Rate(core.FlowRateA))
+                    .Replace("{FlowB}", Rate(core.FlowRateB))
+                    .Replace("{Effectiveness}", Effectiveness(core));
             };
 
             CleaningOrdered = new StatusItem(

@@ -64,6 +64,19 @@ namespace PlateCounterflowHeatExchanger
                         "{Deposits}";
                 }
 
+                public static class PCHX_FLOW
+                {
+                    public static LocString NAME = "Flow: A {FlowA}, B {FlowB}";
+                    public static LocString TOOLTIP =
+                        "{StreamA}: {FlowA}\n" +
+                        "{StreamB}: {FlowB}\n\n" +
+                        "Effectiveness: {Effectiveness}\n" +
+                        "The share of the largest heat transfer possible\n" +
+                        "between these two streams. Throttling a stream raises it;\n" +
+                        "fouling lowers it.\n\n" +
+                        "Rates are averaged over 3 seconds.";
+                }
+
                 public static class PCHX_CLEANINGORDERED
                 {
                     public static LocString NAME = "Cleaning ordered";
@@ -149,6 +162,9 @@ namespace PlateCounterflowHeatExchanger
                 // Deposit list: "{0}: {1}" per stream, and the word for an empty ledger.
                 public static LocString DEPOSIT_LINE = "{0}: {1}";
                 public static LocString NO_DEPOSITS = "clean";
+
+                // Effectiveness readout when the last tick had one stream idle.
+                public static LocString NO_EXCHANGE = "none (one stream idle)";
 
                 // {0} stream, {1} outlet temperature, {2} fluid name, {3} transition temperature.
                 public static LocString PHASE_FREEZE = "{0} leaves at {1};\n{2} freezes at {3}.";
