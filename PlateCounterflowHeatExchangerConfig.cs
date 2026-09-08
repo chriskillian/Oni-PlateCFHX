@@ -18,20 +18,32 @@ namespace PlateCounterflowHeatExchanger
         public static readonly CellOffset SecondaryInput = new CellOffset(1, 2);  // top-right
         public static readonly CellOffset SecondaryOutput = new CellOffset(-1, 2); // top-left
 
+        // Custom art, loaded by the game from anim/assets/<AnimName>/ (README, "Art").
+        public const string AnimName = "plate_counterflow_heat_exchanger";
+        private const string FallbackAnimName = "metalrefinery_kanim"; // borrowed art, drawn for 3x4
+
         public override BuildingDef CreateBuildingDef()
         {
+            // Fall back to borrowed art if the kanim folder failed to load, so a bad art
+            // build costs a wrong-looking building rather than a null-def crash at startup.
+            string anim = Assets.GetAnim(AnimName) != null ? AnimName : FallbackAnimName;
+            if (anim != AnimName)
+            {
+                Debug.LogWarning("[PCHX] kanim " + AnimName + " not loaded; using " + FallbackAnimName);
+            }
+
             BuildingDef def = BuildingTemplates.CreateBuildingDef(
                 ID,
                 3,                              // width
                 3,                              // height
-                "metalrefinery_kanim",          // borrowed art (drawn for 3x4; looks tall for now)
+                anim,
                 100,                            // hit points
                 60f,                            // construction time (seconds)
                 // Parallel arrays, one mass per material tag (borrowed from SteamTurbineConfig2).
                 // See README, "Build menu, research, and recipe" for material input reasoning.
                 // Slot 0 (refined metal) is the PrimaryElement: it drives effectiveness,
                 // melting, and the body the sim conducts to the room. Slot 2 is the shell
-                // insulation; its conductivity sets room heat loss (README, "Shell heat").
+                // insulation; its conductivity sets room heat loss (THERMAL.md, "Shell heat").
                 new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f, BUILDINGS.CONSTRUCTION_MASS_KG.TIER3[0] },
                 new string[] { "RefinedMetal", "BuildingGasket", "Insulator" },
                 2400f,                          // melting point (K)
@@ -51,7 +63,7 @@ namespace PlateCounterflowHeatExchanger
             def.Overheatable = false;           // a heat exchanger is meant to run hot
             // def.ThermalConductivity stays at the default: the measured body-to-room leg
             // is two orders above any non-Insulite shell, so the insulation, not this
-            // value, limits room loss (README, "Shell heat", Calibration).
+            // value, limits room loss (THERMAL.md, "Shell heat", Shell calibration).
             def.AudioCategory = "Metal";
             def.ViewMode = OverlayModes.LiquidConduits.ID;
             GeneratedBuildings.RegisterWithOverlay(OverlayScreen.LiquidVentIDs, ID);

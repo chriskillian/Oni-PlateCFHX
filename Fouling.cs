@@ -25,7 +25,7 @@ namespace PlateCounterflowHeatExchanger
     // Asymptotic (Kern-Seaton style) fouling: deposition grows with throughput, shear removal
     // with throughput squared, so the deposit levels off. State is MASS per byproduct
     // element; thermal resistance is derived from mass. Model, pacing history, and the
-    // deliberate choices behind Apply: README.md, "Fouling model".
+    // deliberate choices behind Apply: FOULING.md.
     public static class Fouling
     {
         // ---- Tuning knobs ----
@@ -35,7 +35,7 @@ namespace PlateCounterflowHeatExchanger
         public const float ResistancePerKg = 1e-5f;
 
         // Removal time constant at full flow, seconds. Deposition rates and this constant
-        // were scaled together by 3 for pacing; equilibria are unchanged (README, "Pacing").
+        // were scaled together by 3 for pacing; equilibria are unchanged (FOULING.md, "Pacing").
         public const float RemovalTimeConstant = 600f;
 
         // Flow that counts as "full" for the shear term: one full liquid packet per tick.
@@ -60,8 +60,8 @@ namespace PlateCounterflowHeatExchanger
         // strength at -10 C and below, none at 50 C and above (Brackene boils at 80 C).
         private static float Waxing(float t) => Mathf.Clamp01((323f - t) / 60f);
 
-        // Every liquid in the game's elements/liquid.yaml was classified (README, "Fouling
-        // model", Liquid classification). Fluids not listed here do not foul: pure or
+        // Every liquid in the game's elements/liquid.yaml was classified (FOULING.md, "Liquid
+        // classification"). Fluids not listed here do not foul: pure or
         // engineered liquids, molten metals, cryogens. Ids are the yaml elementId, which
         // for several DLC liquids differs from the display name (Brackene = Milk, Ovolene =
         // FishMilk, Nectar = SugarWater, Mucin = Mucus, Polluted Brine = MurkyBrine, and the
@@ -124,7 +124,7 @@ namespace PlateCounterflowHeatExchanger
         // strips off returns to it as the flowing element. The packet can never grow past
         // its planned capacity, so the output cell still accepts it in full.
         //
-        // Deliberate, not oversights (README, "Deliberate choices"): shear scours only the
+        // Deliberate, not oversights (FOULING.md, "Deliberate choices"): shear scours only the
         // flowing fluid's own byproduct; fluids with no table entry return early and so
         // never scour (a fouled exchanger cannot be flushed); returned mass joins the fluid.
         public static void Apply(ref Packet p, Dictionary<SimHashes, float> ledger, float wallTemperature, float dt)

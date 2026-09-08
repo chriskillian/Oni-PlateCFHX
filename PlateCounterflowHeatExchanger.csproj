@@ -19,6 +19,11 @@
 
   <!-- net471 reference assemblies are not present on macOS; NuGet supplies them.
        PrivateAssets=all means this is build-only and never shipped. -->
+  <!-- The game-ready kanim, written by tools/build_kanim.sh from the Spriter project in art/kanim-source/. -->
+  <ItemGroup>
+    <AnimFiles Include="anim/**/*" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
@@ -55,6 +60,9 @@
     <MakeDir Directories="$(ModInstallDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModInstallDir)" />
     <Copy SourceFiles="mod_info.yaml;mod.yaml" DestinationFolder="$(ModInstallDir)" />
+    <!-- Custom art. The game loads every anim/assets/<name>/ folder it finds in a mod
+         and registers it as kanim <name>; the folder tree is copied as-is. -->
+    <Copy SourceFiles="@(AnimFiles)" DestinationFiles="@(AnimFiles->'$(ModInstallDir)/%(RecursiveDir)%(Filename)%(Extension)')" />
     <Message Importance="high" Text="Installed mod to $(ModInstallDir)" />
   </Target>
 

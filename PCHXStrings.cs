@@ -163,8 +163,9 @@ namespace PlateCounterflowHeatExchanger
                 public static LocString DEPOSIT_LINE = "{0}: {1}";
                 public static LocString NO_DEPOSITS = "clean";
 
-                // Effectiveness readout when the last tick had one stream idle.
-                public static LocString NO_EXCHANGE = "none (one stream idle)";
+                // Effectiveness readout when the last tick exchanged nothing: a stream idle,
+                // or the plate pack open for cleaning.
+                public static LocString NO_EXCHANGE = "none (no flow)";
 
                 // {0} stream, {1} outlet temperature, {2} fluid name, {3} transition temperature.
                 public static LocString PHASE_FREEZE = "{0} leaves at {1};\n{2} freezes at {3}.";

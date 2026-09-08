@@ -22,7 +22,7 @@ namespace PlateCounterflowHeatExchanger
     }
 
     // The device core: drives both liquid streams by hand, fouls, and exchanges heat between
-    // them. Design and model: README.md, "Flow model" and "Thermal model".
+    // them. Design and model: README.md, "Flow model" and THERMAL.md.
     //
     // Flow follows vanilla ConduitBridge (read input, add to output, remove what was
     // accepted) plus one step the bridge does not need: the heat math must know the mass
@@ -46,13 +46,13 @@ namespace PlateCounterflowHeatExchanger
         private const ConduitType Type = ConduitType.Liquid;
 
         // The single calibration knob for effectiveness: G_clean = k * footprintArea * this.
-        // Value, per-metal predictions, and the alternative of 100: README.md, "Calibration".
+        // Value, per-metal predictions, and the alternative of 100: THERMAL.md, "Calibration".
         private const float PackingFactor = 150f;
 
         // Shell heat loss: G_shell = k_insulator * ShellFactor, where k_insulator is the
         // thermal conductivity of the third construction material (recipe tag "Insulator").
         // Sized so Ceramic (k 0.62) loses roughly 1% of a copper exchanger's duty to the
-        // room; to be calibrated in game. README, "Shell heat, insulation, and melting".
+        // room; to be calibrated in game. THERMAL.md, "Shell heat, insulation, and melting".
         private const float ShellFactor = 1500f;
 
         // Used if the insulator cannot be read from the building (see InsulatorConductivity).
@@ -133,7 +133,7 @@ namespace PlateCounterflowHeatExchanger
         // had one stream idle (no exchange to report).
         private float lastEffectiveness = -1f;
 
-        // Warning status items (README, "Cleaning", status items). Ports: a pipe is missing
+        // Warning status items (README, "Cleaning", Status items). Ports: a pipe is missing
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
         // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
         // changes state in a pipe breaks it under the vanilla rule. We warn, never clamp.
@@ -252,6 +252,7 @@ namespace PlateCounterflowHeatExchanger
             // phase warning is still ticked so it can expire while the plates are open.
             if (FlowBlocked)
             {
+                lastEffectiveness = -1f; // no exchange this tick; the readout says "none"
                 RefreshPhaseStatus(default, default);
                 return;
             }
@@ -425,7 +426,7 @@ namespace PlateCounterflowHeatExchanger
         // its melting point in the building's cell with the metal's mass, posts the
         // "building melted" notification, and destroys the object (deferred, so OnCleanUp
         // runs after this updater returns and the flow manager's list is not modified
-        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and insulation become metal too (README, "Shell heat").
+        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and insulation become metal too (THERMAL.md, "Shell heat").
         private void Melt(float plateTemperature)
         {
             melted = true;
