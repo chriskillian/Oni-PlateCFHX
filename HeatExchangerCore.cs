@@ -63,7 +63,15 @@ namespace PlateCounterflowHeatExchanger
 #pragma warning disable CS0649
         [MyCmpReq]
         private Building building;
+        [MyCmpReq]
+        private KBatchedAnimController anim;
 #pragma warning restore CS0649
+
+        // Art (ART.md): "on" is the glint loop, "off" the still body. Play restarts the
+        // clip, so it is only called when the flowing/idle state changes.
+        private static readonly HashedString AnimOn = "on";
+        private static readonly HashedString AnimOff = "off";
+        private bool animOn; // false matches the def's default state, "off"
 
         // Per-cell pipe capacity. ConduitFlow keeps its working copy in a private field, but
         // publishes the per-type values as public constants; ours is liquid, fixed above.
@@ -254,6 +262,7 @@ namespace PlateCounterflowHeatExchanger
             {
                 lastEffectiveness = -1f; // no exchange this tick; the readout says "none"
                 RefreshPhaseStatus(default, default);
+                SetFlowAnim(false);
                 return;
             }
 
@@ -306,6 +315,19 @@ namespace PlateCounterflowHeatExchanger
             float movedB = Commit(flow, secondaryInputCell, secondaryOutputCell, b);
             Game.Instance.accumulators.Accumulate(flowAccumulatorA, movedA);
             Game.Instance.accumulators.Accumulate(flowAccumulatorB, movedB);
+
+            // 5. Show it: glints run while liquid moves through either stream.
+            SetFlowAnim(movedA + movedB > 0f);
+        }
+
+        private void SetFlowAnim(bool flowing)
+        {
+            if (flowing == animOn)
+            {
+                return;
+            }
+            animOn = flowing;
+            anim.Play(flowing ? AnimOn : AnimOff, KAnim.PlayMode.Loop);
         }
 
         // ---- Flow readout (read by PCHXStatusItems.Flow) ----

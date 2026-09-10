@@ -22,7 +22,11 @@ namespace PlateCounterflowHeatExchanger
             {
                 public static class PLATECOUNTERFLOWHEATEXCHANGER
                 {
-                    public static LocString NAME = "Plate Counterflow Heat Exchanger";
+                    // Vanilla wraps every building name in a codex link (<link="ID">name</link>);
+                    // link text draws in the link colour, so a plain string stood out in lists
+                    // such as the research-progress tooltip. The link id is the codex entry id,
+                    // which for buildings is the prefab id upper-cased.
+                    public static LocString NAME = global::STRINGS.UI.FormatAsLink("Counterflow Heat Exchanger", "PLATECOUNTERFLOWHEATEXCHANGER");
                     // DESC is what the automatic Database (codex) entry shows, so it carries
                     // the short version of the model. EFFECT is the build-menu one-liner.
                     public static LocString DESC =

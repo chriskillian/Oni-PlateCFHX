@@ -27,6 +27,7 @@ to these files for the reasoning behind them.
 - Companion files:
   - [THERMAL.md](THERMAL.md): ε-NTU model and calibration; shell heat, insulation, and melting
   - [FOULING.md](FOULING.md): fouling model, liquid classification, cleaning mechanics
+  - [ART.md](ART.md): custom kanim, SVG to PNG to kanim pipeline, engine naming and scale rules
   - [TESTING.md](TESTING.md): verification plan, verification record, to do
 
 ## Design goals
@@ -183,8 +184,7 @@ are formatted in kilograms always, so the two numbers compare at a glance. The
 tooltip names the ports and shows the effectiveness ε of the last tick on which
 both streams flowed, or "none (no flow)" when a stream was idle or the plates
 were open for cleaning; ε is the number that tells a player what throttling
-bought them and what fouling has cost. The open-plates case is a fix that is
-written but unbuilt (TESTING.md, "To do").
+bought them and what fouling has cost.
 
 ## Localization
 All player-visible text lives in one `LocString` tree, `PCHXStrings.cs`, whose root
@@ -241,51 +241,7 @@ translation.
 - **Art:** custom kanim; see Art. `metalrefinery_kanim` remains the fallback if it fails to load.
 
 ## Art
-The building uses its own kanim, `plate_counterflow_heat_exchanger`. The game
-loads any `anim/assets/<name>/` folder inside a mod and registers it as kanim
-`<name>`, so the folder name is the name `CreateBuildingDef` asks for. If the
-kanim is missing at def-creation time the config falls back to
-`metalrefinery_kanim` and logs `[PCHX] kanim ... not loaded`.
-
-The custom art is wired but has not yet been seen in game. The first in-game
-test, with each symptom and its fix, is in TESTING.md, "Verification plan".
-
-**Pipeline.** Source of truth is the Spriter project in `art/kanim-source/`: one
-`.scml` and one 384x384 PNG per symbol frame (`<symbol>_<n>.png`; kanimal takes
-the symbol name from the file name, which is why the icon file is `ui_0.png`).
-`tools/build_kanim.sh` runs kanimal-cli (kanimal-SE 1.3.31) over it and writes
-`anim/assets/plate_counterflow_heat_exchanger/` with the files renamed
-`<name>_build.bytes`, `<name>_anim.bytes`, `<name>_0.png`. kanimal-cli is a
-.NET Core 3.1 + System.Drawing tool, so on this Ubuntu it runs in a small Docker
-image (`pchx-kanimal`, built on first use from Microsoft's 3.1 runtime image plus
-libgdiplus). The csproj copies `anim/**` into the Dev mod folder. Edit the source,
-run the script, rebuild. `art/svg/` keeps the vector originals (static body and
-the four glint overlays) the PNG frames were rendered from; the first version of
-the art and the Spriter project were produced with Codex on 2026-09-08.
-
-**Contents.** Symbols: `_body` (1 frame), `_glint` (4 frames: pale segments
-drift down the fins, copper glints move through the lower manifold), `ui` (a
-copy of the body for the plan-menu icon). Anims: `idle` (the original 4-frame
-glint loop), `off` (body only; what a completed building shows), `on` (the
-glint loop; nothing plays it yet, see TESTING.md, "To do"), `place` (body only;
-preview ghost and construction site), `ui` (icon). All frames share pivot
-(0.5, 0.0625): centre bottom, 24 px above the tile edge, at the feet.
-
-**Format notes** (BILD v10 / ANIM v5, little-endian, SDBM hashes over the
-lower-cased name, a hash-to-name table at the end of each file). Recorded so the
-files can be read without kanimal:
-- Build symbol frame: `src, dur, img, pivotX, pivotY, pivotW, pivotH, uvX1, uvY1, uvX2, uvY2`.
-  kanimal writes pivot `(0, -336, 768, 768)` for a 384-px tile: width and height
-  are twice the atlas pixels and the origin sits 24 px above the tile's bottom.
-  UV y = 0 is the top of the PNG in kanimal's output.
-- Anim frame: `bboxCX, bboxCY, bboxW, bboxH`, then elements
-  `symbol, frame, folder, flags, rgba, a b c d tx ty, order`. kanimal writes the
-  ANIM header's element and frame totals as 0 and every frame bbox as
-  `(192, 192, 384, 384)`; other mods ship this, so the game tolerates it.
-- I read the 2x pivot convention as 200 anim units per cell (`animScale`
-  0.005), which would put the body at about 3.1 cells tall. Inference; the first
-  in-game look settles it. If the size is wrong, set `scale_x`/`scale_y` on the
-  sprites in the `.scml` and rebuild.
+The custom kanim, its pipeline, and the engine rules it obeys are in [ART.md](ART.md).
 
 ## Source map
 | File | Role |
@@ -305,7 +261,7 @@ files can be read without kanimal:
 | `mod.yaml`, `mod_info.yaml` | Mod manifest. `supportedContent` is obsolete; omitting the DLC lists means "runs everywhere" |
 | `art/kanim-source/` | Spriter project (`.scml` + PNG frames): source of truth for the art |
 | `art/svg/` | Vector originals the PNG frames were rendered from |
-| `tools/build_kanim.sh` | kanimal-cli in Docker: `art/kanim-source/` to `anim/assets/plate_counterflow_heat_exchanger/` (see Art) |
+| `tools/build_kanim.sh` | kanimal-cli in Docker: `art/kanim-source/` to `anim/assets/PCHX/` (see Art) |
 | `anim/` | Generated; do not edit by hand |
 
 ## Building and testing

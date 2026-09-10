@@ -7,7 +7,6 @@ has been checked, what has not, and what remains to build.
 ## Contents
 - [Test rigs](#test-rigs)
 - [Verification plan](#verification-plan)
-  - [Custom art: first in-game test](#custom-art-first-in-game-test)
 - [Verification record](#verification-record)
 - [To do](#to-do)
 
@@ -25,17 +24,11 @@ has been checked, what has not, and what remains to build.
 ## Verification plan
 Checks not yet run, each with what a pass looks like.
 
-- **Effectiveness while cleaning** (fix written 2026-09-08, unbuilt): order a
-  clean; while the plates are open the flow tooltip reads "none (no flow)";
-  after the clean, ε returns once both streams flow. Before the fix the tooltip
-  read 100% while the plates were open, the last exchanging tick's value.
 - **Phase-change margin at 2 K** (built, not yet re-verified): run 275 K water
   against a cold brine stream until the water outlet nears 273 K; "Output near
   phase change" names the stream and both temperatures and clears within 5 s of
   the outlet warming. Verified at the earlier 5 K margin; the 2 K margin has not
   been re-tested.
-- **Flow readout check (e)** (optional): a partial-flow stream (blocked output)
-  shows the accepted mass, not the pipe contents.
 - **Body tracks the fluid mean; the room warms behind Ceramic and not behind
   Insulite.** From the shell-heat plan. Not verified as stated: the shell
   measurement found the body sitting near footprint air with the shell as the
@@ -49,20 +42,6 @@ Checks not yet run, each with what a pass looks like.
   interrupt) rather than chore ranking; our type copies Empty Storage's
   priority, which a lower ranking would never recover from. Note the duplicant's
   status, its Tidying setting and the building's priority if it recurs.
-
-### Custom art: first in-game test
-The custom kanim was wired 2026-09-08 and has not yet been seen in game
-(README.md, "Art"). Each symptom names its fix:
-- Body sits on the floor, about 3 cells tall, stubs at the four port corners,
-  static: done.
-- Body the wrong size: `scale_x`/`scale_y` in the `.scml` (3 cells / observed height).
-- Plan-menu icon blank: `Def.GetUISprite` wants something other than a `ui`
-  anim plus `ui` symbol; decompile it.
-- Building invisible, with `Missing anim` or `KAnim` lines in Player.log: the game
-  asked for an anim name not in the Art section's list; add it to the `.scml`.
-- Preview/construction ghost blank: `place` is named differently; check the log.
-- `[PCHX] kanim ... not loaded` in Player.log: the folder did not register; check
-  the Dev folder has `anim/assets/plate_counterflow_heat_exchanger/` with three files.
 
 ## Verification record
 One line per verified item. Numbers are kept where they are calibration
@@ -101,8 +80,17 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 | Liquid classification: Water 339.5 K vs Brackene 299.8 K | 2026-09-08 | wall 319.7 K, f = 0.056, 0.5 g per 30 ticks over three intervals (model 0.50 g). Three points on the waxing line match; the exact cutoff at 323 K was not reached |
 | Flow readout (a) | 2026-09-08 | "Flow: A 2 kg/s, B 10 kg/s" on the hover card and side panel against valves set so |
 | Flow readout (b) | 2026-09-08 | one valve shut: that rate 0, effectiveness "none (one stream idle)" (the wording at the time) |
-| Flow readout (c) | 2026-09-08 | during a clean both read 0; effectiveness read 100%, the last exchanging tick's value (fix unbuilt; see Verification plan) |
+| Flow readout (c) | 2026-09-08 | during a clean both read 0; effectiveness read 100%, the last exchanging tick's value (fixed and verified 2026-09-09, below) |
 | Flow readout (d) | 2026-09-08 | tooltip effectiveness matched the log: eps=1.000 at 4.1% fouling, Water 339.5 K vs Brackene 299.8 K, NTU 34, Cr 0.204 |
+| Custom art loads | 2026-09-09 | Player.log: "Successfully loaded from path 'root' with content 'DLL, Animation'", no Missing Anim 0x52261FE0, no [PCHX] fallback warning. Fixes: csproj anim/ prefix, folder PCHX registered as PCHX_kanim, RemoveDir before copy |
+| Custom art, first look | 2026-09-09 | body slightly over 3 cells, collars off the pipe endpoints, plan-menu icon building-sized (research and database icons fine), ghost correct, no glints (expected: nothing plays `on`). Diagnosis: art drawn at 120 px/cell, game draws 100 px/cell; fixes in Verification plan |
+| Custom art, second look | 2026-09-09 | rendered at 320 px (game draws 100 px/cell): body 3 cells tall, collars on the pipe endpoints, plan-menu icon (128 px ui frame) the size of its neighbours; accepted for now. Construction site not yet reported |
+| Building name shortened to "Counterflow Heat Exchanger" | 2026-09-09 | build-menu box no longer crowded |
+| Name as codex link | 2026-09-09 | research-progress tooltip lists it in vanilla link colour; clicking the name opens the database entry |
+| Construction site | 2026-09-09 | pale blue sketch from `PCHX_place`, no longer the finished body. Cosmetic gap, low priority: vanilla sites are transparent with white lines where the art has dark lines; ours is a tinted, desaturated body |
+| Flow animation | 2026-09-09 | glints with one or two valves open; still with both shut; still during a clean |
+| Effectiveness while cleaning | 2026-09-09 | "none (no flow)" while the plates are open; ε returns after the clean |
+| Flow readout (e) | 2026-09-09 | output valve at 2 kg/s against a 10 kg/s input; readout showed the accepted 2 kg/s, not the pipe contents |
 
 ## To do
 Release decisions (2026-09-08): `DebugLog` stays on until the liquid
@@ -119,30 +107,12 @@ deferred, a plain constant covers a fouling switch until someone asks.
   `.pot` template (README.md, "Localization", for the signatures still needed).
 - Codex: a custom section (diagram, fouling curve) would need the codex
   generator decompiled; low priority.
-- Custom art: NOT LOADING (first try 2026-09-08). Player.log at startup:
-  `Missing Anim: [0x84F0AB5E]` (the SDBM hash of `plate_counterflow_heat_exchanger`)
-  followed by `[PCHX] kanim plate_counterflow_heat_exchanger not loaded; using
-  metalrefinery_kanim`, so the fallback works and the folder never registered. Two
-  earlier `Missing Anim: [0x31A5D250]` lines match none of our names; probably
-  unrelated, check by hashing candidates. To diagnose: (1) confirm the Dev mod folder
-  contains `anim/assets/plate_counterflow_heat_exchanger/` with the three files
-  (csproj copy may have failed); (2) grep Player.log for other lines mentioning
-  `anim`, `kanim` or an exception near mod load; (3) decompile the mod loader's
-  animation step (`KMod.Mod`, the method that scans `anim/assets`) and
-  `ModUtil.AddKAnim` to confirm the folder layout, file naming (`_0.png`?) and when
-  it runs relative to `Assets.GetAnim` in `CreateBuildingDef`. Then run the first
-  in-game test (Verification plan). Then: play `on`
-  while both streams flow and `off` otherwise (a `KBatchedAnimController.Play`
-  call in `HeatExchangerCore`, `KAnim.PlayMode.Loop`); a work anim for cleaning
-  so `FoulingCleanWorkable.synchronizeAnims` can go true.
+- Art follow-ups: a work anim for cleaning so `FoulingCleanWorkable.synchronizeAnims`
+  can go true.
 
 **Model**
 - Cleaning spawn: a missing byproduct element is skipped silently; a
   `LogWarning` there would be better (`FoulingCleanWorkable`, user's call).
-- Flow-rate readout check (e), optional (Verification plan).
-- Effectiveness while cleaning: the `FlowBlocked` branch now resets
-  `lastEffectiveness` and the readout reads "none (no flow)" for an idle stream
-  or an open plate pack. Unbuilt; verify per the Verification plan.
 - Phase-change margin: re-verify at 2 K (Verification plan).
 - Watch item: idle duplicant before a Clean Plates pickup (Verification plan).
 

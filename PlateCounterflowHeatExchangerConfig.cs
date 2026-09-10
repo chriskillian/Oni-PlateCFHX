@@ -18,8 +18,8 @@ namespace PlateCounterflowHeatExchanger
         public static readonly CellOffset SecondaryInput = new CellOffset(1, 2);  // top-right
         public static readonly CellOffset SecondaryOutput = new CellOffset(-1, 2); // top-left
 
-        // Custom art, loaded by the game from anim/assets/<AnimName>/ (README, "Art").
-        public const string AnimName = "plate_counterflow_heat_exchanger";
+        // Custom art. The game loads anim/assets/PCHX/ and registers it as "PCHX_kanim" (ART.md).
+        public const string AnimName = "PCHX_kanim";
         private const string FallbackAnimName = "metalrefinery_kanim"; // borrowed art, drawn for 3x4
 
         public override BuildingDef CreateBuildingDef()
