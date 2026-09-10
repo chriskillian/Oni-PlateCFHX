@@ -1,6 +1,6 @@
 namespace PlateCounterflowHeatExchanger
 {
-    // Every player-visible string, as a LocString tree. README, "Localization".
+    // Every player-visible string, as a LocString tree. DEVELOPMENT.md, "Localization".
     //
     // The root is named STRINGS on purpose. LocString.CreateLocStringKeys(typeof(STRINGS), null)
     // walks this tree and registers each field under "STRINGS.<Nested>.<Path>.<FIELD>", which is

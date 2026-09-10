@@ -11,7 +11,7 @@ namespace PlateCounterflowHeatExchanger
         // One canonical id. Strings, the plan-menu entry, and the prefab all key off it.
         public const string ID = "PlateCounterflowHeatExchanger";
 
-        // The single source of truth for all four port cells (README, "Geometry and ports").
+        // The single source of truth for all four port cells (DEVELOPMENT.md, "Geometry and ports").
         // x is centered (-1, 0, +1 for a 3-wide building); y is bottom-origin.
         public static readonly CellOffset PrimaryInput = new CellOffset(-1, 0);   // bottom-left
         public static readonly CellOffset PrimaryOutput = new CellOffset(1, 0);   // bottom-right
@@ -40,10 +40,10 @@ namespace PlateCounterflowHeatExchanger
                 100,                            // hit points
                 60f,                            // construction time (seconds)
                 // Parallel arrays, one mass per material tag (borrowed from SteamTurbineConfig2).
-                // See README, "Build menu, research, and recipe" for material input reasoning.
+                // See DEVELOPMENT.md, "Build menu, research, and recipe" for material input reasoning.
                 // Slot 0 (refined metal) is the PrimaryElement: it drives effectiveness,
                 // melting, and the body the sim conducts to the room. Slot 2 is the shell
-                // insulation; its conductivity sets room heat loss (THERMAL.md, "Shell heat").
+                // insulation; its conductivity sets room heat loss (THERMAL.md, "Shell heat, insulation, and melting").
                 new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f, BUILDINGS.CONSTRUCTION_MASS_KG.TIER3[0] },
                 new string[] { "RefinedMetal", "BuildingGasket", "Insulator" },
                 2400f,                          // melting point (K)

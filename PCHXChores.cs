@@ -9,7 +9,7 @@ namespace PlateCounterflowHeatExchanger
     // duplicant status item. Priorities are copied from EmptyStorage instead of taking the
     // next implicit slot: the counter falls by 50 per vanilla type, so a type appended after
     // the constructor would rank below every vanilla chore, Idle included, and duplicants
-    // would idle rather than clean. README, "Cleaning".
+    // would idle rather than clean. DEVELOPMENT.md, "Cleaning".
     public static class PCHXChores
     {
         public const string CleanPlatesId = "PCHX_CleanPlates";

@@ -22,7 +22,7 @@ namespace PlateCounterflowHeatExchanger
     }
 
     // The device core: drives both liquid streams by hand, fouls, and exchanges heat between
-    // them. Design and model: README.md, "Flow model" and THERMAL.md.
+    // them. Design and model: DEVELOPMENT.md, "Flow model" and THERMAL.md.
     //
     // Flow follows vanilla ConduitBridge (read input, add to output, remove what was
     // accepted) plus one step the bridge does not need: the heat math must know the mass
@@ -141,7 +141,7 @@ namespace PlateCounterflowHeatExchanger
         // had one stream idle (no exchange to report).
         private float lastEffectiveness = -1f;
 
-        // Warning status items (README, "Cleaning", Status items). Ports: a pipe is missing
+        // Warning status items (DEVELOPMENT.md, "Cleaning", Status items). Ports: a pipe is missing
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
         // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
         // changes state in a pipe breaks it under the vanilla rule. We warn, never clamp.
@@ -448,7 +448,7 @@ namespace PlateCounterflowHeatExchanger
         // its melting point in the building's cell with the metal's mass, posts the
         // "building melted" notification, and destroys the object (deferred, so OnCleanUp
         // runs after this updater returns and the flow manager's list is not modified
-        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and insulation become metal too (THERMAL.md, "Shell heat").
+        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and insulation become metal too (THERMAL.md, "Shell heat, insulation, and melting").
         private void Melt(float plateTemperature)
         {
             melted = true;

@@ -1,7 +1,8 @@
 # Testing
 Verification plan, verification record, and to-do list for the Plate
-Counterflow Heat Exchanger. Design and model text is in [README.md](README.md),
-[THERMAL.md](THERMAL.md), and [FOULING.md](FOULING.md); this file records what
+Counterflow Heat Exchanger. Design and model text is in
+[DEVELOPMENT.md](DEVELOPMENT.md), [THERMAL.md](THERMAL.md), and
+[FOULING.md](FOULING.md); this file records what
 has been checked, what has not, and what remains to build.
 
 ## Contents
@@ -12,7 +13,8 @@ has been checked, what has not, and what remains to build.
 
 ## Test rigs
 - Diagnostics go to `Player.log` as `[PCHX]` lines every 30 conduit ticks while
-  `DebugLog` is true in `HeatExchangerCore` (README.md, "Building and testing").
+  `DebugLog` is true in `HeatExchangerCore` (DEVELOPMENT.md, "Building and
+  testing").
 - A thermium exchanger on brine throttled to about 2 kg/s against cold water is
   the fastest fouling rig: it reaches the 50% threshold in about four cycles.
 - Liquid classification and flow-readout checks used a thermium/Insulite rig at
@@ -50,21 +52,21 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 | Item | Date | Evidence |
 |---|---|---|
 | Dual same-type streams on one building flow simultaneously without mixing | | |
-| Thermal model matches hand calculation, copper, full flow, steady state | | NTU 2.38, ε 0.75 at 10 kg/s brine vs 10 kg/s water; energy conserved exactly; temperature cross observed (`PackingFactor = 150`) |
+| Thermal model matches hand calculation, copper, full flow, steady state | | $\mathrm{NTU}$ 2.38, $\varepsilon$ 0.75 at 10 kg/s brine vs 10 kg/s water; energy conserved exactly; temperature cross observed (`PackingFactor` $= 150$) |
 | Fouling deposition and removal match the model at full and throttled flow | | full-flow brine settles at 0.46 kg (27%) at a 322 K wall; ledgers survive save and reload |
-| ×3 pacing (τ 1800 s to 600 s, rates ×3) | | throttled copper brine reaches 50% in about 19 cycles (was 58) |
+| $\times 3$ pacing ($\tau$ 1800 s to 600 s, rates $\times 3$) | | throttled copper brine reaches 50% in about 19 cycles (was 58) |
 | Gasket recipe; research gate (Liquid Tuning); build menu (Utilities, Aquatuner group) | | subcategory warning gone |
 | Cleaning UI | | status item and tooltip render; button toggles; errand appears and disappears with the order |
 | Manual clean | | Duplicant performs the errand; both pipes back up; one Salt chunk with exactly the ledger mass; fouling 0%; conductance returns to clean; series-resistance formula checked to four figures before and after |
 | Pending order and its errand survive save, exit, and reload | | |
 | Automatic trigger | 2026-09-07 | fires at exactly 50% on thermium: deposit 0.3369 kg against a predicted 0.3367 kg crossing; cancelled order not re-raised above 50%; completed clean re-arms it and the next crossing fires |
 | Automatic trigger re-arm, second pass | 2026-09-08 | ceramic brine rig: auto order at 50%, clean, re-armed, next crossing fired |
-| Shell heat, cold-water run | 2026-09-07 | thermium/Ceramic in 5 kg/tile oxygen, 275 K water only, twenty minutes: body 290.7 K against bottom-center footprint oxygen 17.2–17.5 °C (290.4–290.65 K, flickering as gas cells swap) while drawing 7.4 kW; room cooled from 21.6 °C; vanilla leg on the order of 25 kW/K or more; insulation is the limiter by two orders. Supersedes the heating-side estimate of 9 kW/K (1.7 K offset at 16 kW). `ShellFactor = 1500` and default `def.ThermalConductivity` stand |
+| Shell heat, cold-water run | 2026-09-07 | thermium/Ceramic in 5 kg/tile oxygen, 275 K water only, twenty minutes: body 290.7 K against bottom-center footprint oxygen 17.2–17.5 °C (290.4–290.65 K, flickering as gas cells swap) while drawing 7.4 kW; room cooled from 21.6 °C; vanilla leg on the order of 25 kW/K or more; insulation is the limiter by two orders. Supersedes the heating-side estimate of 9 kW/K (1.7 K offset at 16 kW). `ShellFactor` $= 1500$ and default `def.ThermalConductivity` stand |
 | Shell heat, Insulite control | 2026-09-07 | same save: body 293.8 K against footprint oxygen 20.7 °C (293.85 K), zero shell exchange; adiabatic |
 | Shell step by hand on the first tick | 2026-09-07 | Ceramic fallback on a two-material building, 930 W/K; signs and magnitudes of both packet terms match |
 | Three-slot recipe and picker | 2026-09-07 | recipe renders; picker offers all five `Insulator` elements in `buildMenuSort` order (Refined Carbon, Ceramic, Pearl, Rubber, Insulite) |
 | `[PCHX] insulator=` log line and `constructionElements[2]` read | 2026-09-07 | `insulator=Ceramic k=0.62 Gshell=930` and `insulator=SuperInsulator k=1E-05` on two new buildings; `G4` format fix prints Insulite as 0.015 W/K |
-| Plate melt rule on magma | 2026-09-07 | magma vs molten copper, Ceramic slot: melt logged at 1988 K against 1357 K on the first tick with fluid; notification posted; building gone; 1100 kg copper tile in the origin cell (800 kg copper + 200 kg insulator + 2×50 kg gaskets). The plate rule fired through Ceramic wrapping, the case the body rule could never catch |
+| Plate melt rule on magma | 2026-09-07 | magma vs molten copper, Ceramic slot: melt logged at 1988 K against 1357 K on the first tick with fluid; notification posted; building gone; 1100 kg copper tile in the origin cell (800 kg copper + 200 kg insulator + $2 \times 50$ kg gaskets). The plate rule fired through Ceramic wrapping, the case the body rule could never catch |
 | Pipe-contents transfer heat line in the info panel | 2026-09-07 | not shown for the exchanger and not shown for an Aquatuner in the same save; not surfaced by the current UI; cosmetic, nothing to fix |
 | Polish check (a): auto order fires the same second the readout first shows 50% | 2026-09-07 | rounded-percent trigger (`FoulingPercent`, `AutoCleanThresholdPercent`) |
 | Polish check (b): "Needs cleaning" appears on cancel, clears on a completed clean | 2026-09-07 | tooltip then cut to two short lines |
@@ -75,13 +77,13 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 | Polish check (g): no "Localization.Initialize not found" or "could not patch" warning | 2026-09-07 | |
 | Codex entry | 2026-09-07 | automatic Database entry shows art, DESC, and recipe; the three-paragraph DESC renders |
 | Liquid classification: compile | 2026-09-08 | all 18 new `SimHashes` names compiled |
-| Liquid classification: Ink vs Brackene, thermium/Insulite, 2 kg/s | 2026-09-08 | Ink 0.2 g/tick (particulate, f = 1); Brackene 0.039 g/tick at wall 315.2 K (waxing f = 0.13); both ledgers, G (284,641 vs 284,650 by hand) and the ε = 1 outlet temperatures matched; cleaning dropped Refined Carbon and Brackwax chunks |
-| Liquid classification: Brackene 280 K vs Water 300 K | 2026-09-08 | wall 290 K, f = 0.55, deposition 0.165 g/tick, ε 0.980 at NTU 34 / Cr 0.981, outlets matched; from a fresh clean 4.9 g per 30 ticks twice in a row (model 4.94 g) |
-| Liquid classification: Water 339.5 K vs Brackene 299.8 K | 2026-09-08 | wall 319.7 K, f = 0.056, 0.5 g per 30 ticks over three intervals (model 0.50 g). Three points on the waxing line match; the exact cutoff at 323 K was not reached |
+| Liquid classification: Ink vs Brackene, thermium/Insulite, 2 kg/s | 2026-09-08 | Ink 0.2 g/tick (particulate, $f = 1$); Brackene 0.039 g/tick at wall 315.2 K (waxing $f = 0.13$); both ledgers, $G$ (284,641 vs 284,650 by hand) and the $\varepsilon = 1$ outlet temperatures matched; cleaning dropped Refined Carbon and Brackwax chunks |
+| Liquid classification: Brackene 280 K vs Water 300 K | 2026-09-08 | wall 290 K, $f = 0.55$, deposition 0.165 g/tick, $\varepsilon$ 0.980 at $\mathrm{NTU}$ 34 / $C_r$ 0.981, outlets matched; from a fresh clean 4.9 g per 30 ticks twice in a row (model 4.94 g) |
+| Liquid classification: Water 339.5 K vs Brackene 299.8 K | 2026-09-08 | wall 319.7 K, $f = 0.056$, 0.5 g per 30 ticks over three intervals (model 0.50 g). Three points on the waxing line match; the exact cutoff at 323 K was not reached |
 | Flow readout (a) | 2026-09-08 | "Flow: A 2 kg/s, B 10 kg/s" on the hover card and side panel against valves set so |
 | Flow readout (b) | 2026-09-08 | one valve shut: that rate 0, effectiveness "none (one stream idle)" (the wording at the time) |
 | Flow readout (c) | 2026-09-08 | during a clean both read 0; effectiveness read 100%, the last exchanging tick's value (fixed and verified 2026-09-09, below) |
-| Flow readout (d) | 2026-09-08 | tooltip effectiveness matched the log: eps=1.000 at 4.1% fouling, Water 339.5 K vs Brackene 299.8 K, NTU 34, Cr 0.204 |
+| Flow readout (d) | 2026-09-08 | tooltip effectiveness matched the log: `eps=1.000` at 4.1% fouling, Water 339.5 K vs Brackene 299.8 K, $\mathrm{NTU}$ 34, $C_r$ 0.204 |
 | Custom art loads | 2026-09-09 | Player.log: "Successfully loaded from path 'root' with content 'DLL, Animation'", no Missing Anim 0x52261FE0, no [PCHX] fallback warning. Fixes: csproj anim/ prefix, folder PCHX registered as PCHX_kanim, RemoveDir before copy |
 | Custom art, first look | 2026-09-09 | body slightly over 3 cells, collars off the pipe endpoints, plan-menu icon building-sized (research and database icons fine), ghost correct, no glints (expected: nothing plays `on`). Diagnosis: art drawn at 120 px/cell, game draws 100 px/cell; fixes in Verification plan |
 | Custom art, second look | 2026-09-09 | rendered at 320 px (game draws 100 px/cell): body 3 cells tall, collars on the pipe endpoints, plan-menu icon (128 px ui frame) the size of its neighbours; accepted for now. Construction site not yet reported |
@@ -89,7 +91,7 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 | Name as codex link | 2026-09-09 | research-progress tooltip lists it in vanilla link colour; clicking the name opens the database entry |
 | Construction site | 2026-09-09 | pale blue sketch from `PCHX_place`, no longer the finished body. Cosmetic gap, low priority: vanilla sites are transparent with white lines where the art has dark lines; ours is a tinted, desaturated body |
 | Flow animation | 2026-09-09 | glints with one or two valves open; still with both shut; still during a clean |
-| Effectiveness while cleaning | 2026-09-09 | "none (no flow)" while the plates are open; ε returns after the clean |
+| Effectiveness while cleaning | 2026-09-09 | "none (no flow)" while the plates are open; $\varepsilon$ returns after the clean |
 | Flow readout (e) | 2026-09-09 | output valve at 2 kg/s against a 10 kg/s input; readout showed the accepted 2 kg/s, not the pipe contents |
 
 ## To do
@@ -104,7 +106,8 @@ deferred, a plain constant covers a fouling switch until someone asks.
   `PackingFactor` (effectiveness). PLib's options system is the usual route and
   is usable for options alone even though we avoid it for conduits.
 - Localization, stage 2: load our own `translations/<locale>.po` and generate a
-  `.pot` template (README.md, "Localization", for the signatures still needed).
+  `.pot` template (DEVELOPMENT.md, "Localization", for the signatures still
+  needed).
 - Codex: a custom section (diagram, fouling curve) would need the codex
   generator decompiled; low priority.
 - Art follow-ups: a work anim for cleaning so `FoulingCleanWorkable.synchronizeAnims`
