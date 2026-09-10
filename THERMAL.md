@@ -80,7 +80,7 @@ Predicted balanced water/water $\varepsilon$ at 10 kg/s:
 Effectiveness increases at lower flow rates. At 1 kg/s, every metal in the game is above 0.92. Dropping the packing factor to 100 stretches the spread to roughly
 Aluminum 0.82 / Lead 0.43 if a wider gap is ever desired.
 
-Thermal effectiveness $\varepsilon$ flattens out and approaches a fixed upper limit when adding more heat transfer surface area (diminishing returns), so high-$k$ metals cluster near 100% effectiveness. Material selection is most important at full throughput. At high $\mathrm{NTU}$ the plate wall stops being the limiting resistance. Allowed construction material is restricted to refined metals. Ore type metals were considered as possible building material candidates, but rejected due to low thermal conductivity.
+Thermal effectiveness $\varepsilon$ flattens out and approaches a fixed upper limit when adding more heat transfer surface area (diminishing returns), so high- $k$ metals cluster near 100% effectiveness. Material selection is most important at full throughput. At high $\mathrm{NTU}$ the plate wall stops being the limiting resistance. Allowed construction material is restricted to refined metals. Ore type metals were considered as possible building material candidates, but rejected due to low thermal conductivity.
 For example, gold amalgam ($k \approx 2$) gave $\varepsilon \approx 0.06$, resulting in a useless building. In-game, a conduction panel built from gold amalgam is similarly useless, but still allowed.
 
 Because the displayed fouling percent is a conductance ratio, the same deposit
