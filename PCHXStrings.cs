@@ -1,6 +1,6 @@
 namespace PlateCounterflowHeatExchanger
 {
-    // Every player-visible string, as a LocString tree. DEVELOPMENT.md, "Localization".
+    // Every player-visible string, as a LocString tree.
     //
     // The root is named STRINGS on purpose. LocString.CreateLocStringKeys(typeof(STRINGS), null)
     // walks this tree and registers each field under "STRINGS.<Nested>.<Path>.<FIELD>", which is
@@ -23,7 +23,7 @@ namespace PlateCounterflowHeatExchanger
                 public static class PLATECOUNTERFLOWHEATEXCHANGER
                 {
                     // Vanilla wraps every building name in a codex link (<link="ID">name</link>);
-                    // link text draws in the link colour, so a plain string stood out in lists
+                    // link text draws in the link colour, so a plain string stands out in lists
                     // such as the research-progress tooltip. The link id is the codex entry id,
                     // which for buildings is the prefab id upper-cased.
                     public static LocString NAME = global::STRINGS.UI.FormatAsLink("Counterflow Heat Exchanger", "PLATECOUNTERFLOWHEATEXCHANGER");
@@ -52,8 +52,8 @@ namespace PlateCounterflowHeatExchanger
                 //
                 // Tooltip lines are kept under about 80 characters with explicit breaks. The
                 // side-panel status tooltip sizes itself to its longest line instead of
-                // wrapping, and a paragraph-length line ran off both screen edges (check f,
-                // 2026-09-07). The long-form explanation of fouling lives in DESC (codex).
+                // wrapping, so a paragraph-length line runs off both screen edges. The
+                // long-form explanation of fouling lives in DESC (codex).
                 public static class PCHX_FOULING
                 {
                     public static LocString NAME = "Fouling: {Fouling}";

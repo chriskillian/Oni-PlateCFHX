@@ -11,7 +11,7 @@ namespace PlateCounterflowHeatExchanger
         // One canonical id. Strings, the plan-menu entry, and the prefab all key off it.
         public const string ID = "PlateCounterflowHeatExchanger";
 
-        // The single source of truth for all four port cells (DEVELOPMENT.md, "Geometry and ports").
+        // The single source of truth for all four port cells.
         // x is centered (-1, 0, +1 for a 3-wide building); y is bottom-origin.
         public static readonly CellOffset PrimaryInput = new CellOffset(-1, 0);   // bottom-left
         public static readonly CellOffset PrimaryOutput = new CellOffset(1, 0);   // bottom-right
@@ -20,7 +20,7 @@ namespace PlateCounterflowHeatExchanger
 
         // Custom art. The game loads anim/assets/PCHX/ and registers it as "PCHX_kanim" (ART.md).
         public const string AnimName = "PCHX_kanim";
-        private const string FallbackAnimName = "metalrefinery_kanim"; // borrowed art, drawn for 3x4
+        private const string FallbackAnimName = "metalrefinery_kanim"; // vanilla art, drawn for 3x4
 
         public override BuildingDef CreateBuildingDef()
         {
@@ -39,8 +39,7 @@ namespace PlateCounterflowHeatExchanger
                 anim,
                 100,                            // hit points
                 60f,                            // construction time (seconds)
-                // Parallel arrays, one mass per material tag (borrowed from SteamTurbineConfig2).
-                // See DEVELOPMENT.md, "Build menu, research, and recipe" for material input reasoning.
+                // Parallel arrays, one mass per material tag, as SteamTurbineConfig2 does.
                 // Slot 0 (refined metal) is the PrimaryElement: it drives effectiveness,
                 // melting, and the body the sim conducts to the room. Slot 2 is the shell
                 // insulation; its conductivity sets room heat loss (THERMAL.md, "Shell heat, insulation, and melting").
@@ -61,9 +60,9 @@ namespace PlateCounterflowHeatExchanger
 
             def.Floodable = false;
             def.Overheatable = false;           // a heat exchanger is meant to run hot
-            // def.ThermalConductivity stays at the default: the measured body-to-room leg
-            // is two orders above any non-Insulite shell, so the insulation, not this
-            // value, limits room loss (THERMAL.md, "Shell heat", Shell calibration).
+            // def.ThermalConductivity stays at the default: the body-to-room leg is two
+            // orders above any non-Insulite shell, so the insulation, not this value,
+            // limits room loss (THERMAL.md, "Shell heat, insulation, and melting").
             def.AudioCategory = "Metal";
             def.ViewMode = OverlayModes.LiquidConduits.ID;
             GeneratedBuildings.RegisterWithOverlay(OverlayScreen.LiquidVentIDs, ID);
@@ -80,8 +79,8 @@ namespace PlateCounterflowHeatExchanger
 
         // The secondary ports (stream B) declare themselves through ISecondaryInput/
         // ISecondaryOutput. Implemented on the finished building by HeatExchangerCore.
-        // Doesnt exist during placement and construction, so attach lightweight
-        // marker components there to make the port icons show (see GasFilter).
+        // That component does not exist during placement and construction, so lightweight
+        // marker components carry the port icons there, as GasFilter does.
         private void AttachSecondaryPorts(GameObject go)
         {
             go.AddComponent<ConduitSecondaryInput>().portInfo =
@@ -105,12 +104,11 @@ namespace PlateCounterflowHeatExchanger
         // def.InputConduitType / OutputConduitType make the game attach a ConduitConsumer and
         // RequireInputs / RequireOutputs to the completed-building prefab. We drive the cells by
         // hand and warn per port ourselves, so none of them may live on the building. Remove
-        // them from the PREFAB, before any instance exists. Removing them per instance at spawn
-        // (the previous approach) was too late: Destroy is deferred to end of frame, so
-        // RequireInputs still ran its own OnSpawn and raised the vanilla "No Liquid Intake" /
-        // "Liquid Pipe Empty" items, then died with nothing left to clear them.
-        // DestroyImmediate on a prefab has no such race. Verified 2026-09-08: consumer,
-        // RequireInputs and RequireOutputs are all present here; no dispenser is ever attached.
+        // them from the PREFAB, before any instance exists. Removing them per instance at
+        // spawn would be too late: Destroy is deferred to end of frame, so RequireInputs would
+        // still run its own OnSpawn and raise the vanilla "No Liquid Intake" / "Liquid Pipe
+        // Empty" items, then die with nothing left to clear them. DestroyImmediate on a prefab
+        // has no such race. No dispenser is ever attached; stripping it is a harmless no-op.
         private static void StripVanillaPlumbing(GameObject go)
         {
             StripComponent<ConduitConsumer>(go);
@@ -122,7 +120,6 @@ namespace PlateCounterflowHeatExchanger
         private static void StripComponent<T>(GameObject go) where T : Component
         {
             T c = go.GetComponent<T>();
-            Debug.Log("[PCHX] prefab " + typeof(T).Name + ": " + (c != null ? "removed" : "not present"));
             if (c != null)
             {
                 UnityEngine.Object.DestroyImmediate(c, true);

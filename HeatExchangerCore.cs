@@ -22,7 +22,7 @@ namespace PlateCounterflowHeatExchanger
     }
 
     // The device core: drives both liquid streams by hand, fouls, and exchanges heat between
-    // them. Design and model: DEVELOPMENT.md, "Flow model" and THERMAL.md.
+    // them. Thermal model: THERMAL.md.
     //
     // Flow follows vanilla ConduitBridge (read input, add to output, remove what was
     // accepted) plus one step the bridge does not need: the heat math must know the mass
@@ -46,13 +46,13 @@ namespace PlateCounterflowHeatExchanger
         private const ConduitType Type = ConduitType.Liquid;
 
         // The single calibration knob for effectiveness: G_clean = k * footprintArea * this.
-        // Value, per-metal predictions, and the alternative of 100: THERMAL.md, "Calibration".
+        // Value and per-metal predictions: THERMAL.md, "Calibration".
         private const float PackingFactor = 150f;
 
         // Shell heat loss: G_shell = k_insulator * ShellFactor, where k_insulator is the
         // thermal conductivity of the third construction material (recipe tag "Insulator").
         // Sized so Ceramic (k 0.62) loses roughly 1% of a copper exchanger's duty to the
-        // room; to be calibrated in game. THERMAL.md, "Shell heat, insulation, and melting".
+        // room. THERMAL.md, "Shell heat, insulation, and melting".
         private const float ShellFactor = 1500f;
 
         // Used if the insulator cannot be read from the building (see InsulatorConductivity).
@@ -72,6 +72,12 @@ namespace PlateCounterflowHeatExchanger
         private static readonly HashedString AnimOn = "on";
         private static readonly HashedString AnimOff = "off";
         private bool animOn; // false matches the def's default state, "off"
+        // "working" is the plate jitter played while a duplicant cleans (ART.md). Driven from
+        // FoulingCleanWorkable rather than Workable.synchronizeAnims: StandardWorker.StartWork
+        // would play the work clips on our controller and lock the duplicant's frames to
+        // ours, which needs working_pre/loop/pst in both banks.
+        private static readonly HashedString AnimWorking = "working";
+        private bool cleaning;
 
         // Per-cell pipe capacity. ConduitFlow keeps its working copy in a private field, but
         // publishes the per-type values as public constants; ours is liquid, fixed above.
@@ -116,9 +122,9 @@ namespace PlateCounterflowHeatExchanger
         [Serialize]
         private Dictionary<SimHashes, float> depositB = new Dictionary<SimHashes, float>();
 
-        // Diagnostic logging for calibration: every LogEveryTicks conduit ticks (1 s each),
-        // dump the exchange numbers to Player.log. Flip DebugLog to false for release.
-        private const bool DebugLog = true;
+        // Diagnostic logging for calibration. true re-enables the [PCHX] calibration lines in
+        // Player.log, one every LogEveryTicks conduit ticks (1 s each).
+        private static readonly bool DebugLog = false;   // readonly, not const, so `if (DebugLog)` compiles without an unreachable-code warning
         private const int LogEveryTicks = 30;
         private int exchangeTicks;
 
@@ -141,7 +147,7 @@ namespace PlateCounterflowHeatExchanger
         // had one stream idle (no exchange to report).
         private float lastEffectiveness = -1f;
 
-        // Warning status items (DEVELOPMENT.md, "Cleaning", Status items). Ports: a pipe is missing
+        // Warning status items. Ports: a pipe is missing
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
         // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
         // changes state in a pipe breaks it under the vanilla rule. We warn, never clamp.
@@ -327,7 +333,22 @@ namespace PlateCounterflowHeatExchanger
                 return;
             }
             animOn = flowing;
+            if (cleaning)
+            {
+                return; // remembered in animOn; shown when the clean ends
+            }
             anim.Play(flowing ? AnimOn : AnimOff, KAnim.PlayMode.Loop);
+        }
+
+        // Cleaning overrides the flow anim for its duration, then hands back.
+        public void SetCleaningAnim(bool on)
+        {
+            if (on == cleaning)
+            {
+                return;
+            }
+            cleaning = on;
+            anim.Play(on ? AnimWorking : (animOn ? AnimOn : AnimOff), KAnim.PlayMode.Loop);
         }
 
         // ---- Flow readout (read by PCHXStatusItems.Flow) ----
@@ -349,7 +370,6 @@ namespace PlateCounterflowHeatExchanger
         // Thermal conductivity of the third construction material. The finished building
         // keeps the chosen element per recipe slot on Deconstructable.constructionElements
         // (that is how deconstruction returns the exact materials); slot 2 is the insulator.
-        // ASSUMPTION (unverified against decompile): field name and per-slot ordering.
         // Falls back to Ceramic with a warning rather than to zero, so a wrong read shows up
         // in the log without silently making the shell perfect.
         private float InsulatorConductivity()

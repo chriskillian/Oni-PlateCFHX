@@ -135,3 +135,4 @@ building deliberately does not clamp the temperature for you.
   the insulation options, and melting.
 - [FOULING.md](FOULING.md): the fouling model and the full list of which liquids
   foul, what they leave behind, and how fast.
+- [ENGINE.md](ENGINE.md): notes for modders on how the game's own code behaves.

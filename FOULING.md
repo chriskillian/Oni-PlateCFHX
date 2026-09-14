@@ -1,10 +1,10 @@
 # Fouling model
 The fouling model of the Plate Counterflow Heat Exchanger: the asymptotic
-deposition/removal step, its one gameplay knob, the temperature-factor curves,
-the classification of every liquid in the game, and what a clean does to the
-ledgers. The player-facing cleaning errand (button, status items, chore type) is
-in [DEVELOPMENT.md](DEVELOPMENT.md), "Cleaning"; the conductance the ledgers degrade is in
-[THERMAL.md](THERMAL.md); verification is recorded in [TESTING.md](TESTING.md).
+deposition and removal step, its one gameplay knob, the temperature-factor
+curves, the classification of every liquid in the game, and what a clean does to
+the ledgers. The conductance the ledgers degrade is in
+[THERMAL.md](THERMAL.md), "Counterflow ε-NTU"; the cleaning errand as the code
+builds it is in [DEVELOPMENT.md](DEVELOPMENT.md), "Cleaning".
 
 ## Contents
 - [Model](#model)
@@ -72,13 +72,13 @@ The other constants are physical, not gameplay:
 | `ReferenceMassPerTick` | 10 kg | full-pipe flow; shear removal scales with $(m / 10\,\mathrm{kg})^{2}$ |
 
 Setting deposition equal to removal gives the asymptotic deposit
-$\text{rate} \times f(T_\mathrm{wall}) \times \tau \times 10\,\mathrm{kg}$ divided by `flowFraction`, the packet mass as a fraction of a full 10 kg pipe (0.46 kg for full-flow brine at a 322 K
-wall, as observed), so rate and $\tau$ are not independent. Change $\tau$ alone to move
-pacing and equilibrium together; change rate and $\tau$ by reciprocal factors to move
-pacing while holding every equilibrium fixed. The $\times 3$ pacing change under Pacing
-is the second kind. The cleaning threshold (`AutoCleanThresholdPercent`, 50) is a
-separate gameplay constant on the workable and is discussed under Deliberate
-choices, item 4.
+$\text{rate} \times f(T_\mathrm{wall}) \times \tau \times 10\,\mathrm{kg}$ divided
+by `flowFraction`, the packet mass as a fraction of a full 10 kg pipe, so rate and
+$\tau$ are not independent. Change $\tau$ alone to move pacing and equilibrium
+together; change rate and $\tau$ by reciprocal factors to move pacing while
+holding every equilibrium fixed. The cleaning threshold
+(`AutoCleanThresholdPercent`, 50) is a separate gameplay constant, discussed under
+"Deliberate choices", item 4.
 
 ## Fluids and byproducts
 Five temperature factors, wall temperature $T_\mathrm{wall}$ in kelvin:
@@ -92,8 +92,8 @@ Five temperature factors, wall temperature $T_\mathrm{wall}$ in kelvin:
 | waxing | $\mathrm{clamp01}((323 - T_\mathrm{wall})/60)$ | wax comes out on a cold wall; full at −10 °C, none at 50 °C |
 
 ## Liquid classification
-Every liquid in the game's `elements/liquid.yaml` (52 entries, build U59, checked
-2026-09-08) was classified. Where the yaml names a solid that the liquid leaves
+Every liquid in the game's `elements/liquid.yaml` (52 entries in build U59) is
+classified. Where the yaml names a solid that the liquid leaves
 behind on boiling (`highTempTransitionOreId`), that solid is the byproduct: the
 game already says what comes out of the liquid. Ids are the yaml `elementId`;
 several DLC liquids display under a different name (Brackene = `Milk`, Ovolene =
@@ -125,85 +125,68 @@ at $f(T_\mathrm{wall}) = 1$.
 No entry, and why: Water, Ethanol, Super Coolant, Visco-Gel (pure or engineered);
 Liquid Sulfur, Liquid Phosphorus, Mercury, Molten Sucrose, every molten metal,
 Molten Glass, Molten Salt, Liquid Carbon (single substances); Magma and Liquid
-Uranium (the melt rule's territory; THERMAL.md, "Shell heat, insulation, and melting"); Nuclear Waste (a
-radioactive sludge deposit would be an invention, not physics; decided
-2026-09-08); Chlorine and the cryogens Oxygen, Hydrogen, Methane, Carbon Dioxide,
+Uranium (the melt rule's territory; THERMAL.md, "Shell heat, insulation, and
+melting"); Nuclear Waste (a radioactive sludge deposit would be an invention, not
+physics); Chlorine and the cryogens Oxygen, Hydrogen, Methane, Carbon Dioxide,
 Propane (nothing dissolved); Liquid Helium and Molten Syngas are disabled in the
 yaml.
 
-Polluted Brine stays a single-mechanism entry (decided 2026-09-08). A second,
-biological spec would add a two-specs-per-liquid structure for a narrow effect:
-scaling is near zero below about 30 °C and biological growth stops above 72 °C,
-so the only behaviour change would be cold Polluted Brine fouling slowly with
-Dirt instead of not at all. Not worth the complexity on its own; open to player
-feedback.
+Polluted Brine fouls by scaling alone. Scaling is near zero below about 30 °C, so
+cold Polluted Brine barely fouls even though a real one would also grow a film.
 
 Only two liquids carry a Spaced Out `dlcId` in the yaml (Liquid Uranium, Nuclear
 Waste); every other DLC liquid is in the base file unmarked, so availability is
 decided by world generation, and a table entry for an absent liquid is harmless.
-The cleaning spawn skips a byproduct whose element lookup fails, silently; a
-`LogWarning` there would be better (`FoulingCleanWorkable`, user's call; see
-TESTING.md, "To do").
 
 Waxing reference: Bott, *Fouling of Heat Exchangers* (1995), solidification
 fouling; paraffin deposition in crude pipelines is the textbook cold-wall case.
 
 ## Pacing
-At full flow with $f(T_\mathrm{wall}) = 1$ the asymptotic deposit of "Calibration"
-reduces to $\text{rate} \times \tau$, so scaling every rate up and $\tau$ down by
-the same factor speeds the whole system up without moving any equilibrium
-(FOULING.md, "Calibration"). The
-first test ran at $\tau = 1800$ s with rates a third of the current ones: physically
-sane, but a throttled brine loop took about 58 cycles to reach 50% fouling.
-Factor 3 applied: $\tau = 600$ s, a throttled copper brine loop now reaches 50% in
-about 19 cycles, and full-flow brine still settles near 27% at a 322 K wall.
+At full flow with $f(T_\mathrm{wall}) = 1$ the asymptotic deposit reduces to
+$\text{rate} \times \tau$, so scaling every rate up and $\tau$ down by the same
+factor speeds the whole system up without moving any equilibrium (see
+"Calibration").
 
-A thermium exchanger on brine throttled to about 2 kg/s against cold water is the
-fastest test rig: it fouls to the 50% threshold in about four cycles (TESTING.md,
-"Test rigs").
+What the current constants feel like in play: a throttled copper brine loop
+reaches the 50% cleaning point in about 19 cycles; full-flow brine settles near
+27% at a 322 K wall and never triggers a clean; a thermium exchanger on throttled
+brine reaches 50% in about four cycles, at 0.34 kg of deposit.
 
 ## Deliberate choices
 1. **Shear scours only the flowing fluid's own byproduct.** A petroleum packet
    strips sulfur, not the carbon a crude packet left. Mixed streams therefore
-   level off near the sum of the individual asymptotes. Accepted; mixed streams
-   are rare.
+   level off near the sum of the individual asymptotes.
 2. **Non-fouling fluids do not scour.** A fouled exchanger cannot be flushed with
-   water. This is load-bearing: at $\tau = 600$ s a full-flow flush would scrub the
-   plates in about ten minutes and the cleaning chore would never be seen. Scale
-   and coke do not rinse off in reality either.
-3. **Returned deposit mass becomes the flowing element** (carbon back into
-   crude, sulfur into petroleum). A fiction, but mass-conserving and far better
-   than spawning debris every tick.
-4. **The displayed fouling % is the cleaning threshold.** It is a conductance
-   ratio, so a thermium exchanger reads 50% at only 0.34 kg of deposit while its
-   effectiveness has barely moved, and lead needs 2.1 kg for the same reading
-   while its effectiveness is sensitive to every gram. Real plants clean on
+   water; only a Duplicant clean empties the plates. At $\tau = 600$ s a full-flow
+   flush would scrub them in about ten minutes. Scale and coke do not rinse off in
+   reality either.
+3. **Deposit mass scoured off becomes the flowing element** (carbon back into
+   crude, sulfur into petroleum). A fiction, but mass-conserving and better than
+   spawning debris every tick.
+4. **The displayed fouling percent is the cleaning threshold.** It is a
+   conductance ratio, so a thermium exchanger reads 50% at only 0.34 kg of deposit
+   while its effectiveness has barely moved, and lead needs 2.1 kg for the same
+   reading while its effectiveness is sensitive to every gram. Real plants clean on
    cleanliness factor too, and using the number the player sees keeps the trigger
    legible.
-5. **The list of fouling fluids stays out of player-facing text** (decided
-   2026-09-07). It would be unworkable in a tooltip once complete, and which
-   fluids foul is left to player discovery; the description and tooltip name only
-   the mechanisms (scaling, coking, biological growth).
+5. **Which fluids foul is left to player discovery.** The building description and
+   tooltip name only the mechanisms: scaling, coking, biological growth.
 
 ## Cleaning mechanics
-What a clean does at the model level; the errand as the player sees it is in
+What a clean does at the model level; the errand as the code builds it is in
 DEVELOPMENT.md, "Cleaning".
 
-- The automatic order fires when the rounded integer percent
-  (`HeatExchangerCore.FoulingPercent`) first reaches `AutoCleanThresholdPercent`
-  (50), on the rising edge only. It is re-armed by a completed clean, so a
-  cancelled automatic order is not re-raised while fouling stays above the
-  threshold, and the next crossing after a clean fires again on its own.
+- The automatic order fires when the displayed integer percent first reaches 50,
+  on the rising edge only. It is re-armed by a completed clean, so a cancelled
+  order is not re-raised while fouling stays above the threshold, and the next
+  crossing after a clean fires again on its own.
 - While the plates are open, both streams stop: the conduit updater plans
   nothing, so neither ledger changes and no heat is exchanged.
 - On completion every ledger empties into one debris chunk per byproduct
   element, at the building's temperature, with exactly the ledger mass. The
   ledgers read zero, the fouling readout reads 0%, and $G$ returns to $G_\mathrm{clean}$.
-- A byproduct whose element lookup fails is skipped (see Liquid classification).
-- Pacing observations: at $\tau = 600$ s a throttled copper brine loop reaches the
-  50% threshold in about 19 cycles; full-flow brine settles near 27% at a 322 K
-  wall and never triggers; a thermium exchanger on throttled brine reaches 50%
-  in about four cycles, at 0.34 kg of deposit.
+- A byproduct whose element is absent from the game drops nothing (see "Liquid
+  classification").
 
 ## References
 - Kern, D. Q. and Seaton, R. E. (1959). A theoretical analysis of thermal surface

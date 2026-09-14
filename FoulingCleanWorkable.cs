@@ -5,7 +5,7 @@ using UnityEngine;
 namespace PlateCounterflowHeatExchanger
 {
     // The cleaning job: a duplicant opens the plate pack and the deposits drop as solid
-    // chunks. Behavior and reasoning: README.md, "Cleaning".
+    // chunks. Behavior and reasoning: README.md, "Cleaning the plates".
     //
     // Shape follows vanilla DropAllWorkable ("Empty Storage"): a Workable that owns at most
     // one chore, a user-menu button that toggles it, a status item while the order is
@@ -78,11 +78,28 @@ namespace PlateCounterflowHeatExchanger
         {
             base.OnPrefabInit();
             Subscribe(493375141, OnRefreshUserMenuDelegate);
-            // Text shown over the duplicant while working. If DuplicantStatusItems.Cleaning
-            // is missing on this game version, Emptying is a known-good fallback.
+            // Text shown over the duplicant while working.
             workerStatusItem = Db.Get().DuplicantStatusItems.Cleaning;
-            synchronizeAnims = false; // borrowed building art has no matching work anim
+            // The building's own cleaning clip is driven from the work hooks below via
+            // HeatExchangerCore.SetCleaningAnim, not by the worker, so the worker must not
+            // touch our controller.
+            synchronizeAnims = false;
             SetWorkTime(CleanWorkTime);
+
+            // Duplicant animation, as Disinfectable does: the multitool spray aimed at the
+            // building, with its splash effect. The multitool's clips live in the duplicant's
+            // default banks, so no overrideAnims is needed; StandardWorker.StartWork hands the
+            // animation to MultitoolController instead.
+            faceTargetWhenWorking = true;
+            multitoolContext = "disinfect";
+            multitoolHitEffectTag = "fx_disinfect_splash";
+
+            // Also as Disinfectable does: work speed scales with Tidying and the errand grants
+            // Basekeeping experience, like every Klei Basekeeping errand.
+            attributeConverter = Db.Get().AttributeConverters.TidyingSpeed;
+            attributeExperienceMultiplier = TUNING.DUPLICANTSTATS.ATTRIBUTE_LEVELING.PART_DAY_EXPERIENCE;
+            skillExperienceSkillGroup = Db.Get().SkillGroups.Basekeeping.Id;
+            skillExperienceMultiplier = TUNING.SKILLS.PART_DAY_EXPERIENCE;
             Prioritizable.AddRef(gameObject);
         }
 
@@ -159,24 +176,41 @@ namespace PlateCounterflowHeatExchanger
             RefreshButton();
         }
 
+        // Where the multitool aims and where fx_disinfect_splash spawns. Workable's default
+        // is the building's origin cell (bottom centre of the 3x3), which would put the spray
+        // on the floor. MultitoolController reads this for SetTargetPos, UpdateWorkTarget and
+        // the hit effect, so one override moves all three. Aim at the plate pack: the centre
+        // cell, nudged right because the pack sits under the right post (art/CODEX_GUIDANCE.md:
+        // plates x 176..260 with the building centre at x 192, 100 px per cell).
+        public override Vector3 GetTargetPoint()
+        {
+            int centreCell = Grid.OffsetCell(Grid.PosToCell(this), 0, 1);
+            Vector3 p = Grid.CellToPosCCC(centreCell, Grid.SceneLayer.BuildingFront);
+            p.x += 0.25f;
+            return p;
+        }
+
         // ---- Work lifecycle ----
 
         protected override void OnStartWork(WorkerBase worker)
         {
             base.OnStartWork(worker);
             core.FlowBlocked = true;
+            core.SetCleaningAnim(true);
         }
 
         protected override void OnStopWork(WorkerBase worker)
         {
             base.OnStopWork(worker);
             core.FlowBlocked = false;
+            core.SetCleaningAnim(false);
         }
 
         protected override void OnCompleteWork(WorkerBase worker)
         {
             base.OnCompleteWork(worker);
             core.FlowBlocked = false;
+            core.SetCleaningAnim(false); // also reached via OnStopWork; idempotent
 
             // Deposits become debris at the building's temperature, one chunk per material.
             float temperature = GetComponent<PrimaryElement>().Temperature;

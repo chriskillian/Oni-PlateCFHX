@@ -47,8 +47,7 @@ namespace PlateCounterflowHeatExchanger
         //    the tree as PlateCounterflowHeatExchanger.STRINGS.*, the form .po files use.
         // 2. CreateLocStringKeys(root, null): re-registers the (possibly translated) text
         //    under the vanilla STRINGS.* keys the game and our StatusItems read.
-        // Loading our own translations/<locale>.po files sits between the two; see DEVELOPMENT.md,
-        // "Localization", for what that still needs.
+        // Loading the mod's own translations/<locale>.po files would sit between the two.
         public static void OnLocalizationInitialized()
         {
             Localization.RegisterForTranslation(typeof(STRINGS));
@@ -63,8 +62,7 @@ namespace PlateCounterflowHeatExchanger
     {
         // Research node (Liquid Tuning, the Aquatuner's tech, one tier below Improved
         // Plumbing) and build-menu home (Utilities, the Aquatuner's group, after the
-        // Aquatuner). See DEVELOPMENT.md, "Build menu, research, and recipe".
-        // Tech ids are not their display names; this was copied from Database.Techs.
+        // Aquatuner). Tech ids are not their display names; see Database.Techs.
         private const string UnlockTechId = "LiquidTemperature";
 
         // Subcategory taken from the game's enum rather than spelled out, so a rename by

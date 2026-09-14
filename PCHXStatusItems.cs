@@ -8,10 +8,6 @@ namespace PlateCounterflowHeatExchanger
     // Text lives in STRINGS.BUILDING.STATUSITEMS.<ID_UPPER>.NAME / .TOOLTIP (PCHXStrings.cs);
     // the constructor looks those keys up from the id and the "BUILDING" prefix. Created
     // in the Db.Initialize postfix, after the game's own status items exist.
-    //
-    // All of this is inferred from the vanilla pattern based on the constructor's parameter
-    // order and the callback signature (string, object) -> string, not from verifying against
-    // decompiled game code. Check here first if this file fails to compile.
     public static class PCHXStatusItems
     {
         public static StatusItem Fouling;

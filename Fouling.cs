@@ -24,8 +24,8 @@ namespace PlateCounterflowHeatExchanger
 
     // Asymptotic (Kern-Seaton style) fouling: deposition grows with throughput, shear removal
     // with throughput squared, so the deposit levels off. State is MASS per byproduct
-    // element; thermal resistance is derived from mass. Model, pacing history, and the
-    // deliberate choices behind Apply: FOULING.md.
+    // element; thermal resistance is derived from mass. Model and the deliberate choices
+    // behind Apply: FOULING.md.
     public static class Fouling
     {
         // ---- Tuning knobs ----
@@ -34,8 +34,9 @@ namespace PlateCounterflowHeatExchanger
         // not the wall, so the same kilogram costs a high-k exchanger a larger share.
         public const float ResistancePerKg = 1e-5f;
 
-        // Removal time constant at full flow, seconds. Deposition rates and this constant
-        // were scaled together by 3 for pacing; equilibria are unchanged (FOULING.md, "Pacing").
+        // Removal time constant at full flow, seconds. Together with the deposition rates it
+        // sets how fast fouling approaches equilibrium; the equilibrium itself depends only
+        // on the product of the two (FOULING.md, "Pacing").
         public const float RemovalTimeConstant = 600f;
 
         // Flow that counts as "full" for the shear term: one full liquid packet per tick.
@@ -60,8 +61,8 @@ namespace PlateCounterflowHeatExchanger
         // strength at -10 C and below, none at 50 C and above (Brackene boils at 80 C).
         private static float Waxing(float t) => Mathf.Clamp01((323f - t) / 60f);
 
-        // Every liquid in the game's elements/liquid.yaml was classified (FOULING.md, "Liquid
-        // classification"). Fluids not listed here do not foul: pure or
+        // Every liquid in the game's elements/liquid.yaml is classified in FOULING.md, "Liquid
+        // classification". Fluids not listed here do not foul: pure or
         // engineered liquids, molten metals, cryogens. Ids are the yaml elementId, which
         // for several DLC liquids differs from the display name (Brackene = Milk, Ovolene =
         // FishMilk, Nectar = SugarWater, Mucin = Mucus, Polluted Brine = MurkyBrine, and the

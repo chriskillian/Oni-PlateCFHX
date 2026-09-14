@@ -12,13 +12,19 @@ has been checked, what has not, and what remains to build.
 - [To do](#to-do)
 
 ## Test rigs
-- Diagnostics go to `Player.log` as `[PCHX]` lines every 30 conduit ticks while
-  `DebugLog` is true in `HeatExchangerCore` (DEVELOPMENT.md, "Building and
+- `DebugLog` in `HeatExchangerCore` defaults to false; set it true for `[PCHX]`
+  calibration lines in `Player.log` every 30 conduit ticks. It is `readonly`,
+  not `const`, so the guarded blocks compile (DEVELOPMENT.md, "Building and
   testing").
 - A thermium exchanger on brine throttled to about 2 kg/s against cold water is
   the fastest fouling rig: it reaches the 50% threshold in about four cycles.
 - Liquid classification and flow-readout checks used a thermium/Insulite rig at
   2 kg/s each side; the re-arm test used a ceramic brine rig.
+- The Soda Fountain is not a control for secondary-port behaviour: it has one
+  primary liquid input at `CellOffset(1, 1)` and no secondary port. It was silent
+  in the test anyway, most likely because the connect sound plays during the pipe
+  build tool's drag and so needs the building to exist before the pipe is laid
+  (DEVELOPMENT.md, "Geometry and ports").
 - Shell heat was measured on a thermium/Ceramic exchanger in 5 kg/tile oxygen
   with only 275 K water flowing, with a thermium/Insulite exchanger in the same
   save as the adiabatic control.
@@ -31,19 +37,15 @@ Checks not yet run, each with what a pass looks like.
   phase change" names the stream and both temperatures and clears within 5 s of
   the outlet warming. Verified at the earlier 5 K margin; the 2 K margin has not
   been re-tested.
+- **Tidying speed**: a high-Tidying Duplicant finishes a clean in well under the
+  30 s base. No such Duplicant exists in the test colony; to be observed
+  opportunistically.
 - **Body tracks the fluid mean; the room warms behind Ceramic and not behind
   Insulite.** From the shell-heat plan. Not verified as stated: the shell
   measurement found the body sitting near footprint air with the shell as the
   limiting resistance (THERMAL.md, "Shell calibration"); the Insulite control
   was adiabatic. Whether a hot fluid warms the room behind Ceramic in ordinary
   air has not been measured directly.
-- **Idle-duplicant watch item** (seen once, 2026-09-08, flow-readout build): a
-  duplicant stood idle for about a minute before taking a Clean Plates chore,
-  then worked it normally. Not seen before. A delayed pickup that resolves on
-  its own points at a precondition (reach, schedule block, another chore's
-  interrupt) rather than chore ranking; our type copies Empty Storage's
-  priority, which a lower ranking would never recover from. Note the duplicant's
-  status, its Tidying setting and the building's priority if it recurs.
 
 ## Verification record
 One line per verified item. Numbers are kept where they are calibration
@@ -93,11 +95,22 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 | Flow animation | 2026-09-09 | glints with one or two valves open; still with both shut; still during a clean |
 | Effectiveness while cleaning | 2026-09-09 | "none (no flow)" while the plates are open; $\varepsilon$ returns after the clean |
 | Flow readout (e) | 2026-09-09 | output valve at 2 kg/s against a 10 kg/s input; readout showed the accepted 2 kg/s, not the pipe contents |
+| Building art, version 2, in game | 2026-09-13 | user screenshot at 118 screen px per cell. Good: plan-menu icon, database entry, research icon. Off: bottom collar ring centres 8 screen px above the pipe centreline (close); building 3.13 cells tall, top bar 19 screen px above the cell-3 boundary; top collar rings 14 screen px above the pipe centreline; construction ghost out of scale with the body, because Codex drew it as a separate image; plate animation too fast; see-through frame interior made the building look shell-less. Measurement method: pipes attached to the ports sit on the cell centres, so the pipe centreline is the reference; the eye aligns on the copper ring centre, which sits about 8 source px above the alpha centroid of the flange component that version 2 aligned on. Fixes in version 3, Verification plan |
+| Building art, version 3, in game | 2026-09-13 | user screenshot `ONI_PCHX_screenshot_2.png` at 147 screen px per cell. Much better: top bar 2 screen px under the cell-3 boundary; construction ghost matches the body. Off: both collar pairs slightly low against the attached pipes, top rings 4.5 screen px (3 source px) low and bottom rings 2 screen px (1.4 source px) low; the plate stack drew over the frame's bottom bar, because the source layers overlap by 13 px at rows 295 to 308 and plates were in front of the frame. Fixes in version 3.1, Verification plan |
+| Building art, version 3.1, in game | 2026-09-13 | user screenshot `ONI_PCHX_screenshot_3.png` at 123 screen px per cell, with the intended pipe axis marked by a green dot on each flange. Fixed: the plate stack now draws behind the frame. Off: the 3 px port nudge was too subtle, the ports still read misaligned. Diagnosis from a 4x crop: the copper ring and the flange disc are concentric with the attached pipe, both centred at 304 screen px, but the grey stub cylinder the pipe plugs into is drawn about 6 screen px lower, its axis at 310, which matches the green dots; the pipe enters the stub high. The stub axis, not the ring centre, is what the eye aligns. Fixes in version 3.2, Verification plan |
+| Building art, version 3.2, in game | 2026-09-13 | ports align with the attached pipes and the construction ghost matches the body, both exactly as expected. Off: the plate pack looked barely full, because the stack ended 9 px short of the insulation shell's edge in the upper and lower sections (shell right edge x 177, plates left edge x 186 in source), showing the dark back panel and the pack's shaded end. Fix in version 4, Verification plan |
+| Building art, version 4, in game | 2026-09-13 | better: the pack now reaches under the shell, so the window between shell and post is filled. Off: the mirror-tiled extension disturbed the metallic shine across the plate face. Replaced by user-drawn art in versions 5 and 6 |
+| Building art, version 6, in game | 2026-09-13 | body judged good: the pack fills the window out to the insulation shell's edge with the metallic shine intact, tucks under the right post with no back panel showing, and reads at a finer stripe pitch than version 5. Plate animation, port alignment, build icon, research icon and database art all passed. One defect: the blueprint ghost still drew the plate pack on top of the frame's bottom bar, because the ghost's layer arguments had kept the pre-3.1 order since version 3 (ART.md, "History"). Fixed in version 6.1, below. Version 5 was superseded by version 6 before it was ever seen in game |
+| Building art, version 6.1, in game | 2026-09-13 | blueprint ghost draws the frame's bottom bar in front of the plate pack, matching the finished body since version 3.1; correct. Nothing else in the art changed, so the version 6 result stands |
+| Building art, version 7, in game | 2026-09-13 | steam wisp animation looks good; the still body is unchanged from version 6.1, so those results stand. Art declared complete |
+| Duplicant cleaning anim: disinfect spray plays | 2026-09-14 | the Duplicant plays the disinfect multitool spray for the work time. The building animated throughout the clean instead of dropping to `off`, which confirms `HeatExchangerCore.SetCleaningAnim` is called. Two gaps found and both since closed, below: the splash landed on the origin cell, and `working` was a copy of `on` |
+| Clean Plates pickup by idle duplicants | 2026-09-14 | `interruptPriority` copied from `EmptyStorage`: two idle duplicants at two exchangers, one duplicant-built and one sandbox-spawned, started the errand immediately on order and both ran to completion; eval log `interrupt(ours/EmptyStorage/current)=96700/96700/96400`, `found=True` |
+| Cleaning anim, building side, kanim version 8 | 2026-09-14 | `working` is the plate jitter with the `fx_glow_vapor` timeline deleted: glow and vapor absent for the whole clean, and both return on completion and after a mid-clean cancel. Preview `art/preview/working-v8-noglow.png` (ART.md, "History") |
+| Splash aim point | 2026-09-14 | `FoulingCleanWorkable.GetTargetPoint` override returns the 3x3 centre cell, nudged $0.25$ toward the plate pack: the spray hits the middle of the exchanger, slightly right of centre (DEVELOPMENT.md, "Cleaning") |
 
 ## To do
-Release decisions (2026-09-08): `DebugLog` stays on until the liquid
-classification work is done and is flipped off as the last edit before a public
-release; the "[PCHX] acceptance mismatch" warning is kept permanently (silent
+Release decisions: `DebugLog` was turned off 2026-09-14, after the liquid
+classification work; the "[PCHX] acceptance mismatch" warning is kept permanently (silent
 unless the game's pipe acceptance rule changes); the PLib options menu is
 deferred, a plain constant covers a fouling switch until someone asks.
 
@@ -110,14 +123,11 @@ deferred, a plain constant covers a fouling switch until someone asks.
   needed).
 - Codex: a custom section (diagram, fouling curve) would need the codex
   generator decompiled; low priority.
-- Art follow-ups: a work anim for cleaning so `FoulingCleanWorkable.synchronizeAnims`
-  can go true.
 
 **Model**
 - Cleaning spawn: a missing byproduct element is skipped silently; a
   `LogWarning` there would be better (`FoulingCleanWorkable`, user's call).
 - Phase-change margin: re-verify at 2 K (Verification plan).
-- Watch item: idle duplicant before a Clean Plates pickup (Verification plan).
 
-**Release**
-- `DebugLog = false`.
+Release checklist: mod_info.yaml version bump pending user decision; rebuild on
+Mac and confirm `Player.log` has no `[PCHX]` calibration lines.
