@@ -86,16 +86,11 @@ Predicted balanced water/water $\varepsilon$ at 10 kg/s:
 Effectiveness rises as flow falls. At 1 kg/s every metal in the game is above
 0.92.
 
-<<<<<<< HEAD
 $\varepsilon$ flattens toward an upper limit as heat transfer area grows, so
 high-$k$ metals cluster near the top of the scale. The metal therefore matters
 most at full throughput; at high $\mathrm{NTU}$ the plate wall is no longer the
 limiting resistance. Only refined metals are allowed, because ore-grade metals
 conduct far too poorly to make a working exchanger.
-=======
-Thermal effectiveness $\varepsilon$ flattens out and approaches a fixed upper limit when adding more heat transfer surface area (diminishing returns), so high- $k$ metals cluster near 100% effectiveness. Material selection is most important at full throughput. At high $\mathrm{NTU}$ the plate wall stops being the limiting resistance. Allowed construction material is restricted to refined metals. Ore type metals were considered as possible building material candidates, but rejected due to low thermal conductivity.
-For example, gold amalgam ($k \approx 2$) gave $\varepsilon \approx 0.06$, resulting in a useless building. In-game, a conduction panel built from gold amalgam is similarly useless, but still allowed.
->>>>>>> refs/remotes/origin/Dev
 
 Because the displayed fouling percent is a conductance ratio, the same deposit
 mass reads differently per metal. A thermium exchanger reads 50% at only 0.34 kg
