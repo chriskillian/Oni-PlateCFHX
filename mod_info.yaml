@@ -2,5 +2,5 @@
 # exactly what it converts the deprecated "supportedContent: ALL" into. The mod
 # runs with or without Spaced Out and any planet pack.
 minimumSupportedBuild: 509629
-version: 0.1.0.0
+version: 1.0.0.0
 APIVersion: 2

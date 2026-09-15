@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+
+# Per-machine build settings (see the csproj); never committed
+Local.props
+
+# OS and tool litter
+tools/
+art/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc

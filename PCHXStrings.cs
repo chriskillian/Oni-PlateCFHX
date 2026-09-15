@@ -94,7 +94,7 @@ namespace PlateCounterflowHeatExchanger
                     public static LocString NAME = "Needs cleaning";
                     public static LocString TOOLTIP =
                         "Exchanger plates are fouled.\n" +
-                        "Efficiency keeps falling until the plates are cleaned.";
+                        "Heat transfer is reduced until the plates are cleaned.";
                 }
 
                 public static class PCHX_PHASECHANGERISK
@@ -102,7 +102,8 @@ namespace PlateCounterflowHeatExchanger
                     public static LocString NAME = "Output near phase change";
                     public static LocString TOOLTIP =
                         "{Detail}\n\n" +
-                        "A fluid that freezes or boils inside a pipe breaks the pipe.\n" +
+                        "Packets over 1 kg that freeze or boil inside a pipe break the pipe.\n" +
+                        "Smaller packets pass through without changing state.\n" +
                         "Throttle a stream, or bring the other inlet closer in temperature.";
                 }
 

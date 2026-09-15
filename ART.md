@@ -1,7 +1,6 @@
 # Art
 
-Custom kanim for the plate counterflow heat exchanger. Companion to
-[DEVELOPMENT.md](DEVELOPMENT.md).
+This file is not player-facing documentation. It describes the development history of the custom kanim for the plate counterflow heat exchanger. It is a companion to [DEVELOPMENT.md](DEVELOPMENT.md).
 
 The building uses its own kanim, `PCHX_kanim`. The game loads any
 `anim/assets/<name>/` folder inside a mod and registers it as kanim `<name>_kanim`

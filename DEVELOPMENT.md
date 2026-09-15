@@ -1,11 +1,8 @@
 # Development
 
-This file is for anyone reading or changing the mod's code: implementation
-choices, the decisions engine behaviour forced, and the wiring that makes the
-building exist. Players want [README.md](README.md). The models are in
-[THERMAL.md](THERMAL.md) and [FOULING.md](FOULING.md), the art pipeline in
-[ART.md](ART.md), Klei's own behaviour in [ENGINE.md](ENGINE.md), and the
-verification plan, record and to-do list in [TESTING.md](TESTING.md).
+This file is not player-facing documentation. It describes the design goals and development the mod. It is for anyone reading or changing the mod's code, including implementation choices, the decisions engine behaviour forced, and the wiring that makes the building exist. The art pipeline is described in [ART.md](ART.md), Klei's own behaviour in [ENGINE.md](ENGINE.md), and the verification plan, record and to-do list in [TESTING.md](TESTING.md).
+
+Players should refer to [README.md](README.md), [THERMAL.md](THERMAL.md), and [FOULING.md](FOULING.md).
 
 ## Contents
 - [Design goals](#design-goals)

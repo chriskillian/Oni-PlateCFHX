@@ -150,7 +150,9 @@ namespace PlateCounterflowHeatExchanger
         // Warning status items. Ports: a pipe is missing
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
         // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
-        // changes state in a pipe breaks it under the vanilla rule. We warn, never clamp.
+        // changes state in a pipe breaks it under the vanilla rule. Packets under 10% of
+        // pipe capacity (1 kg) never change state in a pipe; we still warn on temperature
+        // alone, since opening the valve would break it. We warn, never clamp.
         // The sim transitions an element 3 K BEYOND its listed point and then rebounds 1.5 K
         // back toward it (Klei's latent-heat stand-in and anti-flicker hysteresis), so the
         // real lead time is PhaseMargin + 3 K: 2 K here gives 5 K of true headroom.

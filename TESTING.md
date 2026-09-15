@@ -1,9 +1,5 @@
 # Testing
-Verification plan, verification record, and to-do list for the Plate
-Counterflow Heat Exchanger. Design and model text is in
-[DEVELOPMENT.md](DEVELOPMENT.md), [THERMAL.md](THERMAL.md), and
-[FOULING.md](FOULING.md); this file records what
-has been checked, what has not, and what remains to build.
+This file is not player-facing documentation. It describes the verification plan, verification record, and to-do list for the Plate Counterflow Heat Exchanger mod. It is a companion to [DEVELOPMENT.md](DEVELOPMENT.md). This file records what has been checked, what has not, and what remains to build.
 
 ## Contents
 - [Test rigs](#test-rigs)
@@ -12,40 +8,16 @@ has been checked, what has not, and what remains to build.
 - [To do](#to-do)
 
 ## Test rigs
-- `DebugLog` in `HeatExchangerCore` defaults to false; set it true for `[PCHX]`
-  calibration lines in `Player.log` every 30 conduit ticks. It is `readonly`,
-  not `const`, so the guarded blocks compile (DEVELOPMENT.md, "Building and
-  testing").
-- A thermium exchanger on brine throttled to about 2 kg/s against cold water is
-  the fastest fouling rig: it reaches the 50% threshold in about four cycles.
-- Liquid classification and flow-readout checks used a thermium/Insulite rig at
-  2 kg/s each side; the re-arm test used a ceramic brine rig.
-- The Soda Fountain is not a control for secondary-port behaviour: it has one
-  primary liquid input at `CellOffset(1, 1)` and no secondary port. It was silent
-  in the test anyway, most likely because the connect sound plays during the pipe
-  build tool's drag and so needs the building to exist before the pipe is laid
-  (DEVELOPMENT.md, "Geometry and ports").
-- Shell heat was measured on a thermium/Ceramic exchanger in 5 kg/tile oxygen
-  with only 275 K water flowing, with a thermium/Insulite exchanger in the same
-  save as the adiabatic control.
+- `DebugLog` in `HeatExchangerCore` defaults to false; set it true for `[PCHX]` calibration lines in `Player.log` every 30 conduit ticks. It is `readonly`, not `const`, so the guarded blocks compile (DEVELOPMENT.md, "Building and testing").
+- A thermium exchanger on brine throttled to about 2 kg/s against cold water is the fastest fouling rig: it reaches the 50% threshold in about four cycles.
+- Liquid classification and flow-readout checks used a thermium/Insulite rig at 2 kg/s each side; the re-arm test used a ceramic brine rig.
+- Shell heat was measured on a thermium/Ceramic exchanger in 5 kg/tile oxygen with only 275 K water flowing, with a thermium/Insulite exchanger in the same save as the adiabatic control.
 
 ## Verification plan
 Checks not yet run, each with what a pass looks like.
 
-- **Phase-change margin at 2 K** (built, not yet re-verified): run 275 K water
-  against a cold brine stream until the water outlet nears 273 K; "Output near
-  phase change" names the stream and both temperatures and clears within 5 s of
-  the outlet warming. Verified at the earlier 5 K margin; the 2 K margin has not
-  been re-tested.
-- **Tidying speed**: a high-Tidying Duplicant finishes a clean in well under the
-  30 s base. No such Duplicant exists in the test colony; to be observed
-  opportunistically.
-- **Body tracks the fluid mean; the room warms behind Ceramic and not behind
-  Insulite.** From the shell-heat plan. Not verified as stated: the shell
-  measurement found the body sitting near footprint air with the shell as the
-  limiting resistance (THERMAL.md, "Shell calibration"); the Insulite control
-  was adiabatic. Whether a hot fluid warms the room behind Ceramic in ordinary
-  air has not been measured directly.
+- **Tidying speed**: a high-Tidying Duplicant finishes a clean in well under the 30 s base. No such Duplicant exists in the test colony; to be observed opportunistically.
+- **Body tracks the fluid mean; the room warms behind Ceramic and not behind Insulite.** From the shell-heat plan. Not verified as stated: the shell measurement found the body sitting near footprint air with the shell as the limiting resistance (THERMAL.md, "Shell calibration"); the Insulite control was adiabatic. Whether a hot fluid warms the room behind Ceramic in ordinary air has not been measured directly.
 
 ## Verification record
 One line per verified item. Numbers are kept where they are calibration
@@ -53,14 +25,15 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 
 | Item | Date | Evidence |
 |---|---|---|
-| Dual same-type streams on one building flow simultaneously without mixing | | |
-| Thermal model matches hand calculation, copper, full flow, steady state | | $\mathrm{NTU}$ 2.38, $\varepsilon$ 0.75 at 10 kg/s brine vs 10 kg/s water; energy conserved exactly; temperature cross observed (`PackingFactor` $= 150$) |
-| Fouling deposition and removal match the model at full and throttled flow | | full-flow brine settles at 0.46 kg (27%) at a 322 K wall; ledgers survive save and reload |
-| $\times 3$ pacing ($\tau$ 1800 s to 600 s, rates $\times 3$) | | throttled copper brine reaches 50% in about 19 cycles (was 58) |
-| Gasket recipe; research gate (Liquid Tuning); build menu (Utilities, Aquatuner group) | | subcategory warning gone |
-| Cleaning UI | | status item and tooltip render; button toggles; errand appears and disappears with the order |
-| Manual clean | | Duplicant performs the errand; both pipes back up; one Salt chunk with exactly the ledger mass; fouling 0%; conductance returns to clean; series-resistance formula checked to four figures before and after |
-| Pending order and its errand survive save, exit, and reload | | |
+| Dual same-type streams on one building flow simultaneously without mixing | 2026-09-15 | 2 °C water against 99 °C water: outlets move the right way, both ports receive packets on the same tick, no outlet packet carries the other inlet's temperature; no phase warning while both flow |
+| Phase warning on an idle counter-stream | 2026-09-15 | cold stream stopped: 99 °C water passes through unchanged and the boil warning appears; clears when flow resumes |
+| Thermal model matches hand calculation, copper, full flow, steady state | 2026-09-06 | $\mathrm{NTU}$ 2.38, $\varepsilon$ 0.75 at 10 kg/s brine vs 10 kg/s water; energy conserved exactly; temperature cross observed (`PackingFactor` $= 150$) |
+| Fouling deposition and removal match the model at full and throttled flow | 2026-09-06 | full-flow brine settles at 0.46 kg (27%) at a 322 K wall; ledgers survive save and reload |
+| $\times 3$ pacing ($\tau$ 1800 s to 600 s, rates $\times 3$) | 2026-09-06 | throttled copper brine reaches 50% in about 19 cycles (was 58) |
+| Gasket recipe; research gate (Liquid Tuning); build menu (Utilities, Aquatuner group) | 2026-09-06 | subcategory warning gone |
+| Cleaning UI | 2026-09-06 | status item and tooltip render; button toggles; errand appears and disappears with the order |
+| Manual clean | 2026-09-06 | Duplicant performs the errand; both pipes back up; one Salt chunk with exactly the ledger mass; fouling 0%; conductance returns to clean; series-resistance formula checked to four figures before and after |
+| Pending order and its errand survive save, exit, and reload | 2026-09-15 | two exchangers: one past the 50% automatic-clean trigger, one at 40% fouling with a manual order; both keep the order and errand through save, quit to menu, and reload |
 | Automatic trigger | 2026-09-07 | fires at exactly 50% on thermium: deposit 0.3369 kg against a predicted 0.3367 kg crossing; cancelled order not re-raised above 50%; completed clean re-arms it and the next crossing fires |
 | Automatic trigger re-arm, second pass | 2026-09-08 | ceramic brine rig: auto order at 50%, clean, re-armed, next crossing fired |
 | Shell heat, cold-water run | 2026-09-07 | thermium/Ceramic in 5 kg/tile oxygen, 275 K water only, twenty minutes: body 290.7 K against bottom-center footprint oxygen 17.2–17.5 °C (290.4–290.65 K, flickering as gas cells swap) while drawing 7.4 kW; room cooled from 21.6 °C; vanilla leg on the order of 25 kW/K or more; insulation is the limiter by two orders. Supersedes the heating-side estimate of 9 kW/K (1.7 K offset at 16 kW). `ShellFactor` $= 1500$ and default `def.ThermalConductivity` stand |
@@ -106,15 +79,22 @@ evidence; the model text they support is in THERMAL.md and FOULING.md.
 | Duplicant cleaning anim: disinfect spray plays | 2026-09-14 | the Duplicant plays the disinfect multitool spray for the work time. The building animated throughout the clean instead of dropping to `off`, which confirms `HeatExchangerCore.SetCleaningAnim` is called. Two gaps found and both since closed, below: the splash landed on the origin cell, and `working` was a copy of `on` |
 | Clean Plates pickup by idle duplicants | 2026-09-14 | `interruptPriority` copied from `EmptyStorage`: two idle duplicants at two exchangers, one duplicant-built and one sandbox-spawned, started the errand immediately on order and both ran to completion; eval log `interrupt(ours/EmptyStorage/current)=96700/96700/96400`, `found=True` |
 | Cleaning anim, building side, kanim version 8 | 2026-09-14 | `working` is the plate jitter with the `fx_glow_vapor` timeline deleted: glow and vapor absent for the whole clean, and both return on completion and after a mid-clean cancel. Preview `art/preview/working-v8-noglow.png` (ART.md, "History") |
+| "Output near phase change" at the 2 K margin | 2026-09-15 | 275 K water against 271 K ethanol: no warning while 275 K water passed through alone; warning on with the first exchanged packet (273.7 K) and still on at 274.1 K; cleared after the ethanol was warmed to 275 K and the outlet rose past the 274.5 K threshold (water lowTemp is 272.5 K in the game's liquid.yaml, not 273.15 K); boundary pinned to about 0.4 K |
+| Phase-change tooltip wording (1 kg packet rule) | 2026-09-15 | rebuilt 1.0.0.0 shows the line about smaller packets passing through without changing state |
+| Release build log clean | 2026-09-15 | Mac rebuild: no CS0162, no `[PCHX]` lines in `Player.log` |
 | Splash aim point | 2026-09-14 | `FoulingCleanWorkable.GetTargetPoint` override returns the 3x3 centre cell, nudged $0.25$ toward the plate pack: the spray hits the middle of the exchanger, slightly right of centre (DEVELOPMENT.md, "Cleaning") |
 
 ## To do
 Release decisions: `DebugLog` was turned off 2026-09-14, after the liquid
 classification work; the "[PCHX] acceptance mismatch" warning is kept permanently (silent
 unless the game's pipe acceptance rule changes); the PLib options menu is
-deferred, a plain constant covers a fouling switch until someone asks.
+deferred, a plain constant covers a fouling switch until someone asks. The
+released version in `mod_info.yaml` is 1.0.0.0.
 
 **Player-facing**
+- Screenshots: take realistic in-game shots of the exchanger in a working colony
+  (not the sandbox test rigs) for the README and the Workshop page. The three
+  sandbox captures at the workspace root are not for release.
 - Mod options menu: a switch to disable fouling entirely, and a slider for
   `PackingFactor` (effectiveness). PLib's options system is the usual route and
   is usable for options alone even though we avoid it for conduits.
@@ -127,7 +107,3 @@ deferred, a plain constant covers a fouling switch until someone asks.
 **Model**
 - Cleaning spawn: a missing byproduct element is skipped silently; a
   `LogWarning` there would be better (`FoulingCleanWorkable`, user's call).
-- Phase-change margin: re-verify at 2 K (Verification plan).
-
-Release checklist: mod_info.yaml version bump pending user decision; rebuild on
-Mac and confirm `Player.log` has no `[PCHX]` calibration lines.
