@@ -27,7 +27,7 @@
 
   <!-- net471 reference assemblies are not present on macOS; NuGet supplies them.
        PrivateAssets=all means this is build-only and never shipped. -->
-  <!-- The game-ready kanim, written by tools/build_kanim.sh from the Spriter project in art/kanim-source/. -->
+  <!-- The game-ready kanim, written by ../ModDev/tools/build_kanim.sh from the Spriter project in ../ModDev/art/kanim-source/. -->
   <ItemGroup>
     <AnimFiles Include="anim/**/*" />
   </ItemGroup>

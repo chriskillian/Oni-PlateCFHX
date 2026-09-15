@@ -78,5 +78,5 @@ point. A packet larger than 1 kg then freezes or boils in the pipe and breaks it
 - [FOULING.md](FOULING.md) describes the fouling model, the list of liquids that foul, what they leave behind, and how fast.
 
 ## Source and license
-The source is on GitHub. [DEVELOPMENT.md](DEVELOPMENT.md) covers building this mod and the design behind it. Released under the [MIT License](LICENSE).
+The source is on GitHub. Released under the [MIT License](LICENSE).
 Feedback and bug reports are welcome as GitHub issues.
