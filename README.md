@@ -65,20 +65,18 @@ When to clean early: When the outlet temperature is your highest priority, and o
 Under Utilities, in the Liquid Tuning group, right after the Aquatuner. The building is unlocked through Liquid Tuning research, the same tech that unlocks the Aquatuner and the Conduction Panel.
 
 The heat exchanger requires three materials to build:
-- **Refined metal** for the plates. This choice determines overall performance.
-- **Two Plastic Gaskets.** Cleaning a plate heat exchanger in the real world means opening the plate pack. Gaskets in the build recipe model this physical reality.
-- **An insulating material** for the shell, which determines how much heat leaks out of the building into the surrounding environment. All solid materials with the insulator tag are valid choices. Refined carbon is a cheap early option, but it allows the most heat to escape.
+1. **Refined metal** for the plates. This choice determines overall performance.
+2. **Two Plastic Gaskets.** Cleaning a plate heat exchanger in the real world means opening the plate pack. Gaskets in the build recipe model this physical reality.
+3. **An insulating material** for the shell, which determines how much heat leaks out of the building into the surrounding environment. All solid materials with the insulator tag are valid choices. Refined carbon is a cheap early option, but it allows the most heat to escape.
 
 ## Freezing and boiling warnings
 A good exchanger can push a liquid past its freezing or boiling
 point. A packet larger than 1 kg then freezes or boils in the pipe and breaks it. A smaller packet passes through without changing state, so a throttled stream stays safe even when it leaves too cold or too hot. The building warns you when an outlet leaves close to a phase change, before the pipe fails. Treat that warning as a signal to throttle the flow or change the temperature of the counterflow stream. The warning reads the temperature only, so it also appears for small packets that will not change phase. The building deliberately does not clamp the temperature for you.
 
 ## More detail
-- [THERMAL.md](THERMAL.md): the heat transfer model, per-metal effectiveness,
-  the insulation options, and melting.
-- [FOULING.md](FOULING.md): the fouling model and the full list of which liquids
-  foul, what they leave behind, and how fast.
+- [THERMAL.md](THERMAL.md) describes the heat transfer model, per-metal effectiveness, insulation options, and melting.
+- [FOULING.md](FOULING.md) describes the fouling model, the list of liquids that foul, what they leave behind, and how fast.
 
 ## Source and license
-The source is on GitHub. [DEVELOPMENT.md](DEVELOPMENT.md) covers building the,mod and the design behind it. Released under the [MIT License](LICENSE).
+The source is on GitHub. [DEVELOPMENT.md](DEVELOPMENT.md) covers building this mod and the design behind it. Released under the [MIT License](LICENSE).
 Feedback and bug reports are welcome as GitHub issues.
