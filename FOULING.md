@@ -12,7 +12,7 @@ This document describes the fouling model of the Plate Counterflow Heat Exchange
 - [References](#references)
 
 ## Model
-Solids carried in a liquid settle on the plates and slow heat transfer, the same way scale builds up in a kettle. How fast they settle depends on the liquid, the temperature of the plate wall, and the flow rate. Low flow rates allow more deposits, but fast flow rates also scour deposits from the plates. Scouring grows faster with flow than settling does, so the deposits climb toward a ceiling instead of growing forever. The cleaning errand removes deposits and returns the accumulated mass back to the player.
+Solids carried in a liquid settle on the plates and slow heat transfer, the same way scale builds up in a kettle. How quickly they settle depends on the liquid, the temperature of the plate wall, and the flow rate. Low flow rates allow more deposits, but high flow rates also scour deposits from the plates. Scouring grows faster with flow than settling does, so the deposits climb toward a ceiling instead of growing forever. The cleaning errand removes deposits and returns the accumulated mass back to the player.
 
 The deposition model is asymptotic, after Kern and Seaton. Deposition grows with throughput, while shear removal grows with throughput squared. Thus the overall deposit ceiling is lower at high flow rates.
 

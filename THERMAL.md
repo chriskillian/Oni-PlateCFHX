@@ -12,7 +12,7 @@ $\varepsilon$-NTU exchange between the two streams, the heat exchange calibratio
 - [References](#references)
 
 ## Counterflow ε-NTU
-Heat flows from the hotter stream to the colder one through the metal plates that separate them. A bigger, better-conducting plate pack moves more heat. So does a slower flow, because each kilogram of liquid spends longer against the plates. Effectiveness, written
+Heat flows from the hotter stream to the colder one through the metal plates that separate them. A bigger, better-conducting plate pack moves more heat. So does a lower flow, because a smaller packet has less heat capacity and the same heat moves its temperature further. Effectiveness, written
 $\varepsilon$, is the fraction of the maximum possible heat that the exchanger actually moves. Counterflow means the two streams run in opposite directions, which keeps a useful temperature difference along the whole length of the pack. This geometry is what enables
 the cold stream to leave hotter than the hot stream leaves. In other words, the cold stream exactly gains the heat that the hot stream loses.
 
@@ -46,6 +46,10 @@ For anyone inclined to derive the equation when the streams are balanced (i.e. $
 Fouling raises the resistance of the plates, so $G$ falls as deposit builds up. The formula that models this, the two fouling ledgers, and the status readout are in [FOULING.md](FOULING.md), "Model".
 
 Heat exchange occurs only when both streams are moving. When one side stalls, the flowing side passes through like a pipe for that tick. One flowing fluid still fouls and still trades shell heat with the body ([README.md](README.md), "What it is"). The plates carry no thermal inertia, like the Thermo Aquatuner.
+
+### Gameplay simplification note:
+
+In a real exchanger $\mathrm{NTU} = UA/(\dot{m} c_p)$, where $U$ is the overall heat transfer coefficient in W/(m²·K), $A$ is the plate area in m², and $\dot{m}$ is the mass flow rate in kg/s. The product $UA$ is a conductance in W/K (equivalent to $G$ in our $\varepsilon$-NTU model). A lower $\dot{m}$ shows up in a real exchanger as longer residence time against the plates. ONI moves every packet one segment per tick regardless of its mass, so residence time is fixed and $\dot{m} c_p$ reduces to $C / \Delta t$. The flow rate dependence in game is expressed only through packet mass in the formula for $C$.
 
 ## Calibration
 Clean conductance $G_\mathrm{clean} = k \times 9 \times$ `PackingFactor`, where $k$ is the construction metal's thermal conductivity, 9 is the building's 3x3 footprint, and `PackingFactor` (150) represents the plate count and thickness. `PackingFactor` is the only calibration knob in the counterflow heat exchange model. `ShellFactor` sets how strongly the body couples to the room and is described under "Shell heat, insulation, and melting". The fouling model has its own knob ([FOULING.md](FOULING.md), "Calibration").

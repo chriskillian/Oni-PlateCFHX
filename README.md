@@ -39,9 +39,9 @@ Guidance:
 ## Choosing a flow rate
 You can control the flow rate through the exchanger with a liquid valve on the inlet (or outlet) pipe.
 
-- Slower flow raises effectiveness. Each packet spends more time against the plates, so it comes out closer to the other stream's temperature. At low flow rates, almost any metal gets above 90% effectiveness.
-- Slower flow moves less total heat per second, because less liquid passes through. A stream at a fraction of full rate carries a fraction of the energy, even at high effectiveness.
-- Slower flows foul the plates faster. Fast flows scour some of the deposits the same flow leaves behind. Throttled streams allow deposits to settle and build to a much higher level.
+- Lower flow raises effectiveness. A smaller packet has less heat capacity, so the same heat transfer moves its temperature further toward the other stream's. At low flow rates, almost any metal gets above 90% effectiveness.
+- Lower flow moves less total heat per second, because less liquid passes through. A stream at a fraction of full rate carries a fraction of the energy, even at high effectiveness.
+- Lower flow fouls the plates faster. Full-rate flows scour some of the deposits the same flow leaves behind. Throttled streams allow deposits to settle and build to a much higher level.
 
 Throttle streams when your highest priority is outlet temperature, and
 run at full flow rate when you want to prioritize total heat moved. The
