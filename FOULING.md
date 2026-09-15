@@ -1,5 +1,5 @@
 # Fouling model
-This document describes the fouling model of the Plate Counterflow Heat Exchanger. It includes the asymptotic deposition and removal step, its one gameplay knob, the temperature-factor curves, the classification of every liquid in the game, and what a completed cleaning errand does to the fouling ledgers. The overall mod description is [README.md](README.md), and the thermal model that describes the per-tick $\varepsilon$-NTU exchange between the two streams is in [THERMAL.md](THERMAL.md).
+This document describes the fouling model of the Plate Counterflow Heat Exchanger. It includes the asymptotic deposition and removal step, its one gameplay knob, the temperature-factor curves, the classification of liquids, and what a completed cleaning errand does to the fouling ledgers. The overall mod description is [README.md](README.md), and the thermal model that describes the per-tick $\varepsilon$-NTU exchange between the two streams is in [THERMAL.md](THERMAL.md).
 
 ## Contents
 - [Model](#model)
@@ -12,11 +12,11 @@ This document describes the fouling model of the Plate Counterflow Heat Exchange
 - [References](#references)
 
 ## Model
-Solids carried in a liquid settle on the plates and slow heat transfer, the way scale builds up in a kettle. How fast they settle depends on the liquid, the temperature of the plate wall, and the flow rate. Low flow rates allow more deposits, but fast flow rates also scour deposits from the plates. Scouring grows faster with flow than settling does, so the deposits climb toward a ceiling instead of growing forever. The cleaning errand removes deposits and returns the accumulated mass back to the player.
+Solids carried in a liquid settle on the plates and slow heat transfer, the same way scale builds up in a kettle. How fast they settle depends on the liquid, the temperature of the plate wall, and the flow rate. Low flow rates allow more deposits, but fast flow rates also scour deposits from the plates. Scouring grows faster with flow than settling does, so the deposits climb toward a ceiling instead of growing forever. The cleaning errand removes deposits and returns the accumulated mass back to the player.
 
 The deposition model is asymptotic, after Kern and Seaton. Deposition grows with throughput, while shear removal grows with throughput squared. Thus the overall deposit ceiling is lower at high flow rates.
 
-Fouling accumulation is given by the following formula, per tick, per stream, for a fluid with a table entry:
+Fouling accumulation is given by the following formula, per tick, per stream:
 * $m$ is the packet mass in kilograms (a full pipe carries 10 kg per tick)
 * $T_\mathrm{wall}$ is the wall temperature (the temperature of the plate surface the deposit forms on)
 * $f(T_\mathrm{wall})$ is the temperature factor, a multiplier that scales deposition up or down (see "Fluids and byproducts")
@@ -27,7 +27,7 @@ Fouling accumulation is given by the following formula, per tick, per stream, fo
 
 $$\text{deposition} = \text{rate} \times f(T_\mathrm{wall}) \times m$$
 
-$$\text{removal} = \left(\frac{m}{10\,\mathrm{kg}}\right)^{2} \times D \times \frac{\Delta t}{\tau}$$
+$$\text{removal} = \left(\frac{m}{10\ \mathrm{kg}}\right)^{2} \times D \times \frac{\Delta t}{\tau}$$
 
 $T_\mathrm{wall}$ is calculated as the mean of the two inlet temperatures, or the single flowing one in the case that one flow is stopped.
 
@@ -37,7 +37,7 @@ The deposit adds thermal resistance in series with the clean plate pack:
 
 $$R = R_\mathrm{clean} + R_A + R_B$$
 
-$R_\mathrm{clean}$ is the resistance of the plates with no deposit, and $R_A$ and $R_B$ are the deposit resistances on each side, all in kelvin per watt. The thermal model works with the conductance $G = 1/R$ ([THERMAL.md](THERMAL.md), "Counterflow ε-NTU"). The building status shows the deposit's share of the total resistance, $(R_A + R_B)/R$, which equals $1 - G/G_\mathrm{clean}$. A metal with a small $R_\mathrm{clean}$ therefore reads a high percentage from a small deposit.
+$R_\mathrm{clean}$ is the resistance of the plates with no deposit, and $R_A$ and $R_B$ are the deposit resistances on each side, all in kelvin per watt. The thermal model works with the plate conductance $G = 1/R$ ([THERMAL.md](THERMAL.md), "Counterflow ε-NTU"). The building status shows the deposit's share of the total resistance, $(R_A + R_B)/R$, which equals $1 - G/G_\mathrm{clean}$. A metal with a small $R_\mathrm{clean}$ therefore reads a high percentage from a small deposit.
 
 ## Calibration
 The fouling model has one gameplay knob, the removal time constant $\tau$ (`Fouling.RemovalTimeConstant`, currently 600 s). $\tau$ sets how fast the deposit approaches its asymptote, and therefore how many cycles pass before a cleaning errand is triggered. It also scales the asymptote, so it is tuned together with the deposition rates (see below).
@@ -46,10 +46,10 @@ The fouling model has one gameplay knob, the removal time constant $\tau$ (`Foul
 |---|---|---|
 | `DepositionRate` (per fluid) | table below | kg of deposit per kg of fluid, before $f(T_\mathrm{wall})$ |
 | `ResistancePerKg` | 1e-5 K/W per kg | converts ledger mass to thermal resistance |
-| `ReferenceMassPerTick` | 10 kg | full-pipe flow; shear removal scales with $(m / 10\,\mathrm{kg})^{2}$ |
+| `ReferenceMassPerTick` | 10 kg | full-pipe flow; shear removal scales with $(m / 10\ \mathrm{kg})^{2}$ |
 
 Setting deposition equal to removal gives the asymptotic deposit
-$\text{rate} \times f(T_\mathrm{wall}) \times \tau \times 10\,\mathrm{kg}$ divided by `flowFraction`, the packet mass as a fraction of a full 10 kg pipe, so $\text{rate}$ and $\tau$ are not independent. Changing $\tau$ alone moves pacing and equilibrium together. Changing $\text{rate}$ and $\tau$ by reciprocal factors moves pacing while
+$\text{rate} \times f(T_\mathrm{wall}) \times \tau \times 10\ \mathrm{kg}$ divided by `flowFraction` (the packet mass as a fraction of a full 10 kg pipe), so $\text{rate}$ and $\tau$ are not independent. Changing $\tau$ alone moves pacing and equilibrium together. Changing $\text{rate}$ and $\tau$ by reciprocal factors moves pacing while
 holding equilibrium fixed. The cleaning threshold is a separate gameplay constant (see below, "Deliberate choices", item 4).
 
 ## Fluids and byproducts
@@ -96,12 +96,12 @@ Materials with no entry (and reason):
 Propane (nothing dissolved)
 * Liquid Helium and Molten Syngas (disabled in the yaml)
 
-Polluted Brine fouls by scaling alone. Scaling is near zero below about 30 °C, so cold Polluted Brine barely fouls even though a real one would also grow a biofilm.
+Polluted Brine fouls by scaling alone. Scaling is near zero below about 30 °C, so cold Polluted Brine barely fouls even though it would also grow a biofilm in the real world.
 
 Waxing reference: Bott, *Fouling of Heat Exchangers* (1995), solidification fouling; paraffin deposition in crude pipelines is the textbook cold-wall case.
 
 ## Pacing
-At full 10 kg/s flow with $f(T_\mathrm{wall}) = 1$ the asymptotic deposit reduces to $\text{rate} \times \tau \times 10\,\mathrm{kg}$, so scaling every $\text{rate}$ up and $\tau$ down by the same factor speeds the whole system up without moving any equilibrium (see above, "Calibration").
+At full 10 kg/s flow with $f(T_\mathrm{wall}) = 1$ the asymptotic deposit reduces to $\text{rate} \times \tau \times 10\ \mathrm{kg}$, so scaling every $\text{rate}$ up and $\tau$ down by the same factor speeds the whole system up without moving any equilibrium (see above, "Calibration").
 
 The current setting was determined by gameplay feel. A throttled copper brine loop reaches the 50% cleaning point in about 19 cycles. Brine at max 10 kg/s flow rate settles near 27% at a 322 K $T_\mathrm{wall}$ and never triggers a cleaning errand. A thermium exchanger on throttled
 brine fouls quickly, reaching 50% in about four cycles at 0.34 kg of deposit.

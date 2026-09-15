@@ -19,7 +19,7 @@ the cold stream to leave hotter than the hot stream leaves. In other words, the 
 $G$ is the plate pack's conductance, the heat in watts that crosses the plates for each kelvin of temperature difference between the streams. The construction metal and the plate packing factor determine $G$ (see "Calibration"). The two inlet temperatures, $T_\mathrm{hot}$ and
 $T_\mathrm{cold}$, represent the temperatures of the liquid arriving in each pipe. $\mathrm{NTU}$, the number of transfer units, compares
 $G$ against how much heat capacity the flow carries past it each
-tick. A large $\mathrm{NTU}$ indicates high effectiveness, meaning the fluid temperatures leaving the heat exchanger approach their maximum possible temperature difference. $C_r$ is the ratio of the heat caacity rates between the two flows, with the smaller in the numerator the larger in the denominator. $C_r$ is equal to 1 when the streams are matched.
+tick. A large $\mathrm{NTU}$ indicates high effectiveness, meaning the fluid temperatures leaving the heat exchanger approach their maximum possible temperature difference. $C_r$ is the ratio of the heat capacity rates between the two flows, with the smaller in the numerator the larger in the denominator. $C_r$ is equal to 1 when the streams are matched.
 
 Counterflow $\varepsilon$-NTU per tick is given by the following formula, where:
 
