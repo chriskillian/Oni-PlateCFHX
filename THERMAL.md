@@ -62,7 +62,7 @@ Predicted balanced water/water $\varepsilon$ at 10 kg/s:
 
 Effectiveness rises as flow rate decreases. At 1 kg/s every metal in the game reaches about 0.92 or better.
 
-Effectiveness flattens toward an upper limit as heat transfer area grows, so high\-$k$ metals cluster near the top of the scale. The metal therefore matters most at full throughput, because at high $\mathrm{NTU}$ the plate wall is no longer the limiting resistance.
+Effectiveness flattens toward an upper limit as heat transfer area grows, so high- $k$ metals cluster near the top of the scale. The metal therefore matters most at full throughput, because at high $\mathrm{NTU}$ the plate wall is no longer the limiting resistance.
 
 Because the displayed fouling percent is the deposit's share of the total resistance, the same deposit mass impacts each metal differently. A thermium exchanger reads 50% at only 0.34 kg of deposit while its effectiveness has barely dropped. At the same time, lead needs 2.1 kg for the same fouling percent even though its effectiveness is sensitive to every gram ([FOULING.md](FOULING.md), "Deliberate choices", item 4).
 
@@ -84,7 +84,9 @@ Heat reaches the room through two legs in series.
 
 ### Melting
 Melting can occur via two distinct mechanisms.
-1. **plate temperature** (this mod). When the plate temperature (the fluid mean, the same value the fouling model uses as the wall temperature) exceeds the metal's melting point, the plates fail and the building melts. Insulation hides the plate temperature from the body, so without this rule a ceramic-wrapped copper exchanger could carry magma forever. 
+
+1. **plate temperature** (this mod). When the plate temperature (the fluid mean, the same value the fouling model uses as the wall temperature) exceeds the metal's melting point, the plates fail and the building melts. Insulation hides the plate temperature from the body, so without this rule a ceramic-wrapped copper exchanger could carry magma forever.
+
 2. **body temperature** (game rule). When the body temperature exceeds the building's plate metal melting point, the sim melts the building and spawns the metal's liquid in the origin cell. The mass spawned is the sum of all construction slots, so gaskets and insulation "melt" into refined metal. A copper exchanger standing in a magma-flooded room fails on the body by this game rule.
 
 This mod's melting rule tests the metal only. The insulator wraps the body, not the plates. Most metals melt below ceramic's 2123 K, so the metal test fires first. Steel, niobium, thermium and tungsten melt hotter than ceramic, so an exchanger built from those metals is left to the game rule.
