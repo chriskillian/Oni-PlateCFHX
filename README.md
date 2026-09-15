@@ -66,7 +66,7 @@ Under Utilities, in the Liquid Tuning group, right after the Aquatuner. The buil
 
 The heat exchanger requires three materials to build:
 1. **Refined metal** for the plates. This choice determines overall performance.
-2. **Two Plastic Gaskets.** Cleaning a plate heat exchanger in the real world means opening the plate pack. Gaskets in the build recipe model this physical reality.
+2. **Two Gaskets.** Cleaning a plate heat exchanger in the real world means opening the plate pack. Gaskets in the build recipe model this physical reality.
 3. **An insulating material** for the shell, which determines how much heat leaks out of the building into the surrounding environment. All solid materials with the insulator tag are valid choices. Refined carbon is a cheap early option, but it allows the most heat to escape.
 
 ## Freezing and boiling warnings
