@@ -78,9 +78,9 @@ Heat reaches the room through two legs in series.
 
 *  $G_\mathrm{shell}$ is the conductance of the insulating wrap in watts per kelvin
 * $T_\mathrm{body}$ is the temperature of the building body
-* $T_i$ and $C_i$ are the temperature, heat capacity rate of the packet on stream $i$
+* $T_i$ and $C_i$ are the temperature and heat capacity rate of the packet on stream $i$
 * $\Delta t$ is the conduit tick rate (1.0 seconds)
-* and $Q_i$ is the heat that packet trades with the body per tick
+* and $Q_i$ is the heat the packet trades with the body per tick
 
 1. **Fluid to body** (this mod). Each tick, each flowing packet trades heat with the body: $Q_i = \tfrac{1}{2} G_\mathrm{shell} (T_i - T_\mathrm{body})  \Delta t$. The packet temperature moves by $Q_i / C_i$. The sum goes into the body as signed energy, so a hot body warms a cold packet and energy is conserved both ways.
 

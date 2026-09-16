@@ -4,8 +4,8 @@ using UnityEngine;
 
 namespace PlateCounterflowHeatExchanger
 {
-    // One tick's planned transfer on one stream: the fluid that WILL move from the input
-    // cell to the output cell this tick. It is a plan, not storage. Nothing is held between
+    // One tick's planned transfer on one stream (the fluid that WILL move from the input
+    // cell to the output cell this tick). It is a plan, without storage. Nothing is held between
     // ticks, so there is no state to serialize, no invisible mass, and no double-counting
     // against ONI's own thermal sim. Mirrors ConduitBridge, which also holds nothing.
     public struct Packet
@@ -13,7 +13,7 @@ namespace PlateCounterflowHeatExchanger
         public SimHashes Element;
         public float Mass;        // what will be pushed to the output (after fouling adjusts it)
         public float SourceMass;  // what will be removed from the input (the planned amount)
-        public float Capacity;    // free room in the output cell; Mass may never exceed this
+        public float Capacity;    // free room in the output cell (Mass may never exceed this)
         public float Temperature;
         public byte DiseaseIdx;
         public int DiseaseCount;
@@ -21,11 +21,11 @@ namespace PlateCounterflowHeatExchanger
         public bool IsEmpty => Mass <= 0f;
     }
 
-    // The device core: drives both liquid streams by hand, fouls, and exchanges heat between
-    // them. Thermal model: THERMAL.md.
+    // This class is the core device logic. It drives both liquid streams by hand,
+    // fouls, and exchanges heat between them. Thermal model: THERMAL.md.
     //
-    // Flow follows vanilla ConduitBridge (read input, add to output, remove what was
-    // accepted) plus one step the bridge does not need: the heat math must know the mass
+    // Flow follows base game ConduitBridge (read input, add to output, remove what was
+    // accepted). Adds one step the bridge does not need: the heat math must know the mass
     // that really moves, so acceptance is predicted first by mirroring ConduitFlow.AddElement's
     // rule, heat is exchanged between the two predicted packets, then both are committed.
     //
@@ -45,11 +45,11 @@ namespace PlateCounterflowHeatExchanger
 
         private const ConduitType Type = ConduitType.Liquid;
 
-        // The single calibration knob for effectiveness: G_clean = k * footprintArea * this.
-        // Value and per-metal predictions: THERMAL.md, "Calibration".
+        // The single calibration knob for heat exchange model effectiveness.
+        // G_clean = k * footprintArea * this. See THERMAL.md, "Calibration".
         private const float PackingFactor = 150f;
 
-        // Shell heat loss: G_shell = k_insulator * ShellFactor, where k_insulator is the
+        // Shell heat loss. G_shell = k_insulator * ShellFactor, where k_insulator is the
         // thermal conductivity of the third construction material (recipe tag "Insulator").
         // Sized so Ceramic (k 0.62) loses roughly 1% of a copper exchanger's duty to the
         // room. THERMAL.md, "Shell heat, insulation, and melting".
@@ -80,10 +80,10 @@ namespace PlateCounterflowHeatExchanger
         private bool cleaning;
 
         // Per-cell pipe capacity. ConduitFlow keeps its working copy in a private field, but
-        // publishes the per-type values as public constants; ours is liquid, fixed above.
+        // publishes the per-type values as public constants. Ours is liquid, fixed above.
         private const float MaxMass = ConduitFlow.MAX_LIQUID_MASS;
 
-        // Stream A primary cells (from the def; already network endpoints).
+        // Stream A primary cells (from the def, already network endpoints).
         private int primaryInputCell;
         private int primaryOutputCell;
 
@@ -97,32 +97,32 @@ namespace PlateCounterflowHeatExchanger
         // construction material's thermal conductivity. Fouling adds resistance in series.
         private float cleanConductance;
 
-        // Shell: conductance from the fluids to the building body (W/K), the body itself,
+        // Building shell. Conductance from the fluids to the building body (W/K), the body itself,
         // and the sim handle the Aquatuner uses to hand energy to the structure.
         private float shellConductance;
         private PrimaryElement construction;
         private HandleVector<int>.Handle structureTemperature;
 
-        // Plate melting point: the construction metal's highTemp. When the plate temperature
-        // (the fluid mean) reaches it the building melts like any vanilla structure would,
+        // Plate melting point, the construction metal's highTemp. When the plate temperature
+        // (the fluid mean) reaches it, the building melts like any game structure would
         // through the same public DoMelt the sim calls on body temperature.
         private float meltTemperature;
         private bool melted;
 
-        // Idle bookkeeping for the energy tooltip: after two ticks with no flow, report zero
+        // Idle bookkeeping for the energy tooltip. After two ticks with no flow, report zero
         // once so the displayed rate resets (AirConditioner does the same on a 2 s timer).
         private int idleShellTicks;
         private bool shellIdleReported;
         private int shellTicks;
 
-        // Fouling ledgers: kilograms of deposit per byproduct element, one per stream side.
+        // Fouling ledgers. Kilograms of deposit per byproduct element, one per stream side.
         // SAVED. Thermal resistance is derived from these each tick (Fouling.ResistanceOf).
         [Serialize]
         private Dictionary<SimHashes, float> depositA = new Dictionary<SimHashes, float>();
         [Serialize]
         private Dictionary<SimHashes, float> depositB = new Dictionary<SimHashes, float>();
 
-        // Diagnostic logging for calibration. true re-enables the [PCHX] calibration lines in
+        // Diagnostic logging for calibration. true enables the [PCHX] calibration lines in
         // Player.log, one every LogEveryTicks conduit ticks (1 s each).
         private static readonly bool DebugLog = false;   // readonly, not const, so `if (DebugLog)` compiles without an unreachable-code warning
         private const int LogEveryTicks = 30;
@@ -130,7 +130,7 @@ namespace PlateCounterflowHeatExchanger
 
         // Set by FoulingCleanWorkable while a duplicant has the plate pack open. While true
         // the updater plans nothing, so both input pipes back up exactly as they would
-        // behind a closed valve. Not saved: a reloaded chore re-raises it when work resumes.
+        // behind a closed valve. Not saved, a reloaded chore re-raises it when work resumes.
         public bool FlowBlocked { get; set; }
 
         // Handles for the always-on "Fouling: N%" and "Flow: A .., B .." status items.
@@ -151,8 +151,8 @@ namespace PlateCounterflowHeatExchanger
         // at one of the four port cells, so that stream cannot flow. Phase: an outlet is
         // within PhaseMargin of its fluid's freezing or boiling point, and a fluid that
         // changes state in a pipe breaks it under the vanilla rule. Packets under 10% of
-        // pipe capacity (1 kg) never change state in a pipe; we still warn on temperature
-        // alone, since opening the valve would break it. We warn, never clamp.
+        // pipe capacity (1 kg) never change state in a pipe. We still warn on temperature
+        // alone, since opening the valve would break the pipe. We warn, never clamp.
         // The sim transitions an element 3 K BEYOND its listed point and then rebounds 1.5 K
         // back toward it (Klei's latent-heat stand-in and anti-flicker hysteresis), so the
         // real lead time is PhaseMargin + 3 K: 2 K here gives 5 K of true headroom.
@@ -195,8 +195,8 @@ namespace PlateCounterflowHeatExchanger
             mgr.AddToNetworks(secondaryInputCell, secondaryInputItem, true);
             mgr.AddToNetworks(secondaryOutputCell, secondaryOutputItem, true);
 
-            // Effectiveness scales with the material the exchanger is built from: higher
-            // thermal conductivity => lower wall resistance => more heat moved per tick.
+            // Effectiveness scales with the material the exchanger is built from. Higher
+            // thermal conductivity means lower wall resistance and more heat moved per tick.
             // G = k * footprintArea * PackingFactor. footprintArea is the 3x3 footprint.
             construction = GetComponent<PrimaryElement>();
             float k = construction != null ? construction.Element.thermalConductivity : 0f;
@@ -204,12 +204,11 @@ namespace PlateCounterflowHeatExchanger
             cleanConductance = k * footprintArea * PackingFactor;
 
             // Plates melt at the metal's melting point. Elements with no melt product carry
-            // Unobtanium as their transition target and DoMelt ignores them; every refined
-            // metal has one.
+            // Unobtanium as their transition target and DoMelt ignores them.
             meltTemperature = construction != null ? construction.Element.highTemp : float.MaxValue;
 
-            // Shell: the insulation's conductivity sets how fast fluid heat reaches the body.
-            // The body-to-room leg is the sim's own (AddBuildingHeatExchange over the footprint).
+            // Building shell. The insulation's conductivity sets how fast fluid heat reaches the body.
+            // The body-to-room leg is done by the game sim (AddBuildingHeatExchange over the footprint).
             shellConductance = InsulatorConductivity() * ShellFactor;
             structureTemperature = GameComps.StructureTemperatures.GetHandle(gameObject);
 
@@ -218,8 +217,8 @@ namespace PlateCounterflowHeatExchanger
             depositB = depositB ?? new Dictionary<SimHashes, float>();
 
             // Drive flow in phase with the liquid conduit simulation. Note the conduit sim
-            // ticks once per SECOND (ConduitFlow.TickRate), not every 200 ms; the solver
-            // moves pipe mass first, then calls updaters like this one with dt = 1.0.
+            // ticks once per SECOND (ConduitFlow.TickRate). The solver moves pipe mass first
+            // then calls updaters like this one with dt = 1.0.
             // Whatever we add to an output cell here is carried away by NEXT tick's solve.
             Conduit.GetFlowManager(Type).AddConduitUpdater(ConduitUpdate);
 
@@ -228,7 +227,7 @@ namespace PlateCounterflowHeatExchanger
             selectable = GetComponent<KSelectable>();
             foulingStatus = selectable.AddStatusItem(PCHXStatusItems.Fouling, this);
 
-            // Flow readout: one accumulator per stream (Add ignores its arguments beyond
+            // Flow readout. One accumulator per stream (Add ignores its arguments beyond
             // allocating the slot), and the status item whose callbacks read them.
             flowAccumulatorA = Game.Instance.accumulators.Add("PCHX flow A", this);
             flowAccumulatorB = Game.Instance.accumulators.Add("PCHX flow B", this);
@@ -255,7 +254,7 @@ namespace PlateCounterflowHeatExchanger
 
         private void ConduitUpdate(float dt)
         {
-            // Melted: the object is being destroyed at end of frame; do nothing meanwhile.
+            // Melted, the object is being destroyed at end of frame. Meanwhile, do nothing.
             if (melted)
             {
                 return;
@@ -264,11 +263,11 @@ namespace PlateCounterflowHeatExchanger
             ConduitFlow flow = Conduit.GetFlowManager(Type);
             RefreshPortStatus(flow);
 
-            // Plate pack open for cleaning: nothing moves on either stream this tick. The
+            // Plate pack open for cleaning. Nothing moves on either stream this tick. The
             // phase warning is still ticked so it can expire while the plates are open.
             if (FlowBlocked)
             {
-                lastEffectiveness = -1f; // no exchange this tick; the readout says "none"
+                lastEffectiveness = -1f; // no exchange this tick (readout says "none")
                 RefreshPhaseStatus(default, default);
                 SetFlowAnim(false);
                 return;
@@ -284,10 +283,11 @@ namespace PlateCounterflowHeatExchanger
             //    mean of both inlets when both flow, or the single inlet otherwise.
             float wall = WallTemperature(a, b);
 
-            //    Plates hotter than the metal's melting point: the building melts. Checked on
-            //    inlet temperatures, before any exchange, and independent of insulation (which
-            //    wraps the skin, not the plates). Nothing is committed; the fluid stays in
-            //    the input pipes, which now end at nothing.
+            //    If the plates reach or exceed the melting point, the building melts. Checked on
+            //    inlet temperatures, before any exchange, and independent of insulation.
+            //    Nothing is committed, and the fluid stays in the input pipes, which now end at nothing.
+            //    See THERMAL.md, "Melting".
+
             if ((!a.IsEmpty || !b.IsEmpty) && wall >= meltTemperature)
             {
                 Melt(wall);
@@ -299,7 +299,9 @@ namespace PlateCounterflowHeatExchanger
 
             // 3. Exchange: trade heat between the two moving packets through the fouled
             //    wall. If either stream is stalled this tick, the other passes through
-            //    unchanged, like a bridge; an exchanger with one side stopped is just a pipe.
+            //    unchanged, like a bridge. An exchanger with one side stopped is just a pipe.
+            //    A single flowing stream still deposits fouling and still trades heat with the
+            //    building's shell. See README.md "What it is".
             if (!a.IsEmpty && !b.IsEmpty)
             {
                 ExchangeHeat(dt, ref a, ref b, ActualConductance()); // sets lastEffectiveness
@@ -324,7 +326,7 @@ namespace PlateCounterflowHeatExchanger
             Game.Instance.accumulators.Accumulate(flowAccumulatorA, movedA);
             Game.Instance.accumulators.Accumulate(flowAccumulatorB, movedB);
 
-            // 5. Show it: glints run while liquid moves through either stream.
+            // 5. Animation: glints run while liquid moves through either stream.
             SetFlowAnim(movedA + movedB > 0f);
         }
 
@@ -337,7 +339,7 @@ namespace PlateCounterflowHeatExchanger
             animOn = flowing;
             if (cleaning)
             {
-                return; // remembered in animOn; shown when the clean ends
+                return; // Remembered in animOn. Shown when the clean ends
             }
             anim.Play(flowing ? AnimOn : AnimOff, KAnim.PlayMode.Loop);
         }
@@ -371,7 +373,7 @@ namespace PlateCounterflowHeatExchanger
 
         // Thermal conductivity of the third construction material. The finished building
         // keeps the chosen element per recipe slot on Deconstructable.constructionElements
-        // (that is how deconstruction returns the exact materials); slot 2 is the insulator.
+        // (this is how deconstruction returns the exact materials). Slot 2 is the insulator.
         // Falls back to Ceramic with a warning rather than to zero, so a wrong read shows up
         // in the log without silently making the shell perfect.
         private float InsulatorConductivity()
@@ -397,7 +399,7 @@ namespace PlateCounterflowHeatExchanger
         // Each moving packet relaxes toward the body temperature through half the shell
         // conductance (one side of the plate pack each). The energy the packets lose is
         // handed to the structure in kilojoules, signed, via the same call the Aquatuner
-        // uses for its waste heat; the sim then conducts it to the room. Using the
+        // uses for its waste heat. The sim then conducts it to the room. Using the
         // Aquatuner's source string puts the rate in the vanilla energy tooltip.
         private void ShellExchange(float dt, ref Packet a, ref Packet b)
         {
@@ -437,8 +439,8 @@ namespace PlateCounterflowHeatExchanger
             }
         }
 
-        // Heat one packet gives to the body this tick (J; negative = drawn from the body).
-        // Explicit step, clamped so the packet cannot overshoot the body temperature.
+        // Heat given to the body this tick (in Joules, negative values drawn from the body).
+        // Clamped so the packet cannot overshoot the body temperature.
         private static float ShellLoss(float dt, float g, float tBody, ref Packet p)
         {
             if (p.IsEmpty)
@@ -450,7 +452,7 @@ namespace PlateCounterflowHeatExchanger
             {
                 return 0f;
             }
-            float c = p.Mass * 1000f * e.specificHeatCapacity; // J/K
+            float c = p.Mass * 1000f * e.specificHeatCapacity; // in J/K
             if (c <= 0f)
             {
                 return 0f;
@@ -466,11 +468,12 @@ namespace PlateCounterflowHeatExchanger
             return q;
         }
 
-        // Vanilla melt, invoked on plate temperature. DoMelt spawns the metal's liquid at
+        // Vanilla melt method, invoked on plate temperature. DoMelt spawns the metal's liquid at
         // its melting point in the building's cell with the metal's mass, posts the
         // "building melted" notification, and destroys the object (deferred, so OnCleanUp
         // runs after this updater returns and the flow manager's list is not modified
-        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and insulation become metal too (THERMAL.md, "Shell heat, insulation, and melting").
+        // mid-iteration). DoMelt uses the building's total PrimaryElement mass, so gaskets and
+        // insulation become metal too (THERMAL.md, "Shell heat, insulation, and melting").
         private void Melt(float plateTemperature)
         {
             melted = true;
@@ -479,7 +482,7 @@ namespace PlateCounterflowHeatExchanger
         }
 
         // Clean wall and both deposits are thermal resistances in series:
-        //   1/G_actual = 1/G_clean + R_fA + R_fB
+        // 1/G_actual = 1/G_clean + R_fA + R_fB
         private float ActualConductance()
         {
             if (cleanConductance <= 0f) return 0f;
@@ -487,7 +490,7 @@ namespace PlateCounterflowHeatExchanger
             return 1f / r;
         }
 
-        // Fraction of total resistance that is deposit: 0 = clean, 0.5 = conductance halved.
+        // Fraction of total resistance that is deposit. 0 = clean, 0.5 = conductance halved.
         // This is the number the player sees in the status item.
         public float FoulingFraction()
         {
@@ -496,7 +499,7 @@ namespace PlateCounterflowHeatExchanger
         }
 
         // The integer percent the player sees. The automatic cleaning trigger compares this
-        // same value, so the order fires exactly when the readout says the threshold.
+        // same value, so the order fires exactly when the readout matches the threshold.
         public int FoulingPercent() => Mathf.RoundToInt(FoulingFraction() * 100f);
 
         public float DepositMass() => Fouling.TotalMass(depositA) + Fouling.TotalMass(depositB);
@@ -504,9 +507,9 @@ namespace PlateCounterflowHeatExchanger
         // ---- Warnings ----
 
         // One warning per port with no pipe segment on it. HasConduit is the same test
-        // PlanTransfer uses to decide a stream cannot move, so warning and behaviour agree.
-        // Port names in the status text follow the unrotated layout; the building is not
-        // rotatable.
+        // PlanTransfer uses to decide a stream cannot move, so warning and behavior agree.
+        // Port names in the status text follow the unrotated layout. The building is not
+        // rotatable (rotation would swap direction of top and bottom flows, no obvious need).
         private void RefreshPortStatus(ConduitFlow flow)
         {
             SetNoPipe(PortIndex.AIn, !flow.HasConduit(primaryInputCell));
@@ -560,7 +563,7 @@ namespace PlateCounterflowHeatExchanger
 
         // Empty both ledgers and hand back the deposits merged by byproduct, so the cleaner
         // can drop one chunk per material. Mass leaves the ledgers here and reappears as
-        // debris in the caller; nothing is created or lost.
+        // debris in the game. Deposits below 1g are lost.
         public Dictionary<SimHashes, float> TakeDeposits()
         {
             var taken = new Dictionary<SimHashes, float>();
@@ -597,7 +600,7 @@ namespace PlateCounterflowHeatExchanger
                 string name = e != null ? e.name : kv.Key.ToString();
                 parts.Add(GameUtil.GetFormattedMass(kv.Value) + " " + name);
             }
-            // Explicit cast: LocString converts implicitly both to and from string, which
+            // Explicit cast. LocString converts implicitly both to and from string, which
             // leaves a conditional expression with no single type to pick.
             return parts.Count == 0 ? (string)STRINGS.UI.PCHX.NO_DEPOSITS : string.Join(", ", parts);
         }
@@ -644,11 +647,11 @@ namespace PlateCounterflowHeatExchanger
             return p;
         }
 
-        // Move the planned packet: add to the output at its (possibly changed) temperature
+        // Move the planned packet. Add to the output at its (possibly changed) temperature
         // and mass, then remove the PLANNED mass from the input. The two differ by whatever
         // fouling deposited or returned, so mass is conserved across fluid + deposit.
-        // Because PlanTransfer mirrored the acceptance rule, accepted should equal p.Mass; a
-        // shortfall means our prediction and the game's rule disagree, so log it loudly.
+        // Because PlanTransfer mirrored the acceptance rule, accepted should equal p.Mass. A
+        // shortfall means our prediction and the game's rule disagree, so log it.
         // Returns the mass the output cell accepted (what actually moved this tick).
         private static float Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
         {
@@ -670,8 +673,7 @@ namespace PlateCounterflowHeatExchanger
         }
 
         // Counterflow heat exchange between the two moving packets for one tick, by the
-        // ε-NTU method. Trades heat, never mass; only the packet temperatures change. Disease
-        // and element are untouched.
+        // ε-NTU method. Trades heat, never mass. Disease and element are untouched.
         private void ExchangeHeat(float dt, ref Packet a, ref Packet b, float conductance)
         {
             if (conductance <= 0f)
@@ -701,7 +703,7 @@ namespace PlateCounterflowHeatExchanger
             float cr = cMin / cMax;
             float ntu = conductance * dt / cMin;
 
-            // Counterflow effectiveness. The balanced case (cr -> 1) is a removable
+            // Counterflow effectiveness. The balanced case (cr = 1) is a removable
             // singularity in the general formula, so handle it on its own.
             float eps;
             if (cr > 0.999f)
@@ -723,7 +725,7 @@ namespace PlateCounterflowHeatExchanger
             float aIn = a.Temperature;
             float bIn = b.Temperature;
 
-            // Apply equal-and-opposite energy: what the hot stream loses, the cold gains.
+            // Apply equal-and-opposite energy. The hot stream loses what the cold gains.
             if (a.Temperature >= b.Temperature)
             {
                 a.Temperature -= q / cA;
@@ -735,7 +737,7 @@ namespace PlateCounterflowHeatExchanger
                 b.Temperature -= q / cB;
             }
 
-            // Periodic sample, not just the first tick: the first packets through a freshly
+            // Periodic sample (not just the first tick). The first packets through a freshly
             // filled pipe are usually partial, so they say little about full-flow behavior.
             if (DebugLog && exchangeTicks++ % LogEveryTicks == 0)
             {

@@ -5,10 +5,10 @@ namespace PlateCounterflowHeatExchanger
 {
     // The game scans every loaded assembly for IBuildingConfig subclasses and
     // instantiates each one to build its BuildingDef. So this class existing is
-    // enough to create the building; no manual registration of the def is needed.
+    // enough to create the building. No manual registration of the def is needed.
     public class PlateCounterflowHeatExchangerConfig : IBuildingConfig
     {
-        // One canonical id. Strings, the plan-menu entry, and the prefab all key off it.
+        // Canonical id. Strings, the plan-menu entry, and the prefab all key off it.
         public const string ID = "PlateCounterflowHeatExchanger";
 
         // The single source of truth for all four port cells.
@@ -26,6 +26,7 @@ namespace PlateCounterflowHeatExchanger
         {
             // Fall back to borrowed art if the kanim folder failed to load, so a bad art
             // build costs a wrong-looking building rather than a null-def crash at startup.
+            // The game logs a warning in that case.
             string anim = Assets.GetAnim(AnimName) != null ? AnimName : FallbackAnimName;
             if (anim != AnimName)
             {
@@ -39,10 +40,10 @@ namespace PlateCounterflowHeatExchanger
                 anim,
                 100,                            // hit points
                 60f,                            // construction time (seconds)
-                // Parallel arrays, one mass per material tag, as SteamTurbineConfig2 does.
-                // Slot 0 (refined metal) is the PrimaryElement: it drives effectiveness,
+                // Parallel arrays, one mass per material tag, as in SteamTurbineConfig2.
+                // Slot 0 (refined metal) is the PrimaryElement. Drives effectiveness,
                 // melting, and the body the sim conducts to the room. Slot 2 is the shell
-                // insulation; its conductivity sets room heat loss (THERMAL.md, "Shell heat, insulation, and melting").
+                // insulation. Shell conductivity sets room heat loss (THERMAL.md, "Shell heat, insulation, and melting").
                 new float[] { BUILDINGS.CONSTRUCTION_MASS_KG.TIER5[0], 2f, BUILDINGS.CONSTRUCTION_MASS_KG.TIER3[0] },
                 new string[] { "RefinedMetal", "BuildingGasket", "Insulator" },
                 2400f,                          // melting point (K)
@@ -60,9 +61,8 @@ namespace PlateCounterflowHeatExchanger
 
             def.Floodable = false;
             def.Overheatable = false;           // a heat exchanger is meant to run hot
-            // def.ThermalConductivity stays at the default: the body-to-room leg is two
-            // orders above any non-Insulite shell, so the insulation, not this value,
-            // limits room loss (THERMAL.md, "Shell heat, insulation, and melting").
+            // def.ThermalConductivity stays at the default.
+            // See (THERMAL.md, "Shell heat, insulation, and melting").
             def.AudioCategory = "Metal";
             def.ViewMode = OverlayModes.LiquidConduits.ID;
             GeneratedBuildings.RegisterWithOverlay(OverlayScreen.LiquidVentIDs, ID);
@@ -74,7 +74,7 @@ namespace PlateCounterflowHeatExchanger
         {
             // No Storage/ConduitConsumer/ConduitDispenser: both streams are moved cell-to-cell
             // by HeatExchangerCore in the same stateless way ConduitBridge does, so nothing is
-            // ever held inside the building. See that class for the reasoning.
+            // ever held inside the building. See ConduitBridge class for the reasoning.
         }
 
         // The secondary ports (stream B) declare themselves through ISecondaryInput/
@@ -105,10 +105,10 @@ namespace PlateCounterflowHeatExchanger
         // RequireInputs / RequireOutputs to the completed-building prefab. We drive the cells by
         // hand and warn per port ourselves, so none of them may live on the building. Remove
         // them from the PREFAB, before any instance exists. Removing them per instance at
-        // spawn would be too late: Destroy is deferred to end of frame, so RequireInputs would
+        // spawn would be too late. Destroy is deferred to end of frame, so RequireInputs would
         // still run its own OnSpawn and raise the vanilla "No Liquid Intake" / "Liquid Pipe
         // Empty" items, then die with nothing left to clear them. DestroyImmediate on a prefab
-        // has no such race. No dispenser is ever attached; stripping it is a harmless no-op.
+        // has no such race. No dispenser is ever attached, so stripping it is a harmless no-op.
         private static void StripVanillaPlumbing(GameObject go)
         {
             StripComponent<ConduitConsumer>(go);
@@ -136,7 +136,7 @@ namespace PlateCounterflowHeatExchanger
             core.secondaryInputOffset = SecondaryInput;
             core.secondaryOutputOffset = SecondaryOutput;
 
-            // Cleaning errand: user-menu button, automatic trigger, and the duplicant
+            // Cleaning errand. User-menu button, automatic trigger, and the duplicant
             // work that empties the ledgers into debris.
             go.AddOrGet<FoulingCleanWorkable>();
         }
