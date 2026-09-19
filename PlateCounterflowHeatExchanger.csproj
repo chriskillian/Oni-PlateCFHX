@@ -11,6 +11,10 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- We reference the game's DLLs; do not copy them next to our output. -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!-- SDK projects compile every .cs under their folder. The unit tests in tests/ are a
+         separate project (run with `dotnet test tests/ThermalModel.Tests`); keep them and
+         their build output out of the mod DLL. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
 
     <!-- Where the game's DLLs live and where the built mod is installed. Defaults
          below cover a Steam install on macOS and Windows. To override on your machine,

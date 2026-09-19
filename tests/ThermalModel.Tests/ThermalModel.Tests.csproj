@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the pure thermal model. Run from the mod folder with
+         dotnet test tests/ThermalModel.Tests
+       This project never references the mod project or the game. It compiles one source
+       file straight from the mod, so it runs on any machine with the .NET SDK and no ONI
+       install. If a game type ever leaks into that file, this project stops compiling,
+       which is the intended alarm. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Match the mod so the shared file is compiled under the same language rules. -->
+    <LangVersion>8.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The code under test, linked in place rather than copied. Link= sets the name shown
+         in IDEs. -->
+    <Compile Include="../../CounterflowThermalModel.cs" Link="CounterflowThermalModel.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test host, framework and the adapter that lets `dotnet test` discover xUnit tests.
+         Versions current as of 2026-09; `dotnet restore` will say if any are unavailable. -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>

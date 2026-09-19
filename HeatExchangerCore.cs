@@ -4,23 +4,6 @@ using UnityEngine;
 
 namespace PlateCounterflowHeatExchanger
 {
-    // One tick's planned transfer on one stream (the fluid that WILL move from the input
-    // cell to the output cell this tick). It is a plan, without storage. Nothing is held between
-    // ticks, so there is no state to serialize, no invisible mass, and no double-counting
-    // against ONI's own thermal sim. Mirrors ConduitBridge, which also holds nothing.
-    public struct Packet
-    {
-        public SimHashes Element;
-        public float Mass;        // what will be pushed to the output (after fouling adjusts it)
-        public float SourceMass;  // what will be removed from the input (the planned amount)
-        public float Capacity;    // free room in the output cell (Mass may never exceed this)
-        public float Temperature;
-        public byte DiseaseIdx;
-        public int DiseaseCount;
-
-        public bool IsEmpty => Mass <= 0f;
-    }
-
     // This class is the core device logic. It drives both liquid streams by hand,
     // fouls, and exchanges heat between them. Thermal model: THERMAL.md.
     //
@@ -55,9 +38,6 @@ namespace PlateCounterflowHeatExchanger
         // room. THERMAL.md, "Shell heat, insulation, and melting".
         private const float ShellFactor = 1500f;
 
-        // Used if the insulator cannot be read from the building (see InsulatorConductivity).
-        private const float FallbackInsulatorConductivity = 0.62f; // Ceramic
-
         // KMonoBehaviour fills [MyCmpReq] fields by reflection at spawn, so the compiler
         // cannot see the assignment and warns CS0649. Silence it for this field only.
 #pragma warning disable CS0649
@@ -78,10 +58,6 @@ namespace PlateCounterflowHeatExchanger
         // ours, which needs working_pre/loop/pst in both banks.
         private static readonly HashedString AnimWorking = "working";
         private bool cleaning;
-
-        // Per-cell pipe capacity. ConduitFlow keeps its working copy in a private field, but
-        // publishes the per-type values as public constants. Ours is liquid, fixed above.
-        private const float MaxMass = ConduitFlow.MAX_LIQUID_MASS;
 
         // Stream A primary cells (from the def, already network endpoints).
         private int primaryInputCell;
@@ -124,7 +100,7 @@ namespace PlateCounterflowHeatExchanger
 
         // Diagnostic logging for calibration. true enables the [PCHX] calibration lines in
         // Player.log, one every LogEveryTicks conduit ticks (1 s each).
-        private static readonly bool DebugLog = false;   // readonly, not const, so `if (DebugLog)` compiles without an unreachable-code warning
+        private static readonly bool DebugLog = true;    // readonly, not const, so `if (DebugLog)` compiles without an unreachable-code warning
         private const int LogEveryTicks = 30;
         private int exchangeTicks;
 
@@ -275,8 +251,8 @@ namespace PlateCounterflowHeatExchanger
 
             // 1. Plan: what will actually move on each stream this tick, given the input's
             //    contents and the output's free capacity. Each stream is planned on its own.
-            Packet a = PlanTransfer(flow, primaryInputCell, primaryOutputCell);
-            Packet b = PlanTransfer(flow, secondaryInputCell, secondaryOutputCell);
+            Packet a = ConduitTransfer.Plan(flow, primaryInputCell, primaryOutputCell);
+            Packet b = ConduitTransfer.Plan(flow, secondaryInputCell, secondaryOutputCell);
 
             // 2. Foul: each moving packet deposits on (or scours) its side of the plates.
             //    The wall sits between the streams, so its temperature is estimated as the
@@ -321,8 +297,8 @@ namespace PlateCounterflowHeatExchanger
 
             // 4. Commit, bridge-style: add to output, then remove the planned mass from input.
             //    What the output accepted is what actually flowed; feed it to the readout.
-            float movedA = Commit(flow, primaryInputCell, primaryOutputCell, a);
-            float movedB = Commit(flow, secondaryInputCell, secondaryOutputCell, b);
+            float movedA = ConduitTransfer.Commit(flow, primaryInputCell, primaryOutputCell, a);
+            float movedB = ConduitTransfer.Commit(flow, secondaryInputCell, secondaryOutputCell, b);
             Game.Instance.accumulators.Accumulate(flowAccumulatorA, movedA);
             Game.Instance.accumulators.Accumulate(flowAccumulatorB, movedB);
 
@@ -366,34 +342,35 @@ namespace PlateCounterflowHeatExchanger
 
         private static float WallTemperature(Packet a, Packet b)
         {
-            if (!a.IsEmpty && !b.IsEmpty) return 0.5f * (a.Temperature + b.Temperature);
-            if (!a.IsEmpty) return a.Temperature;
-            return b.Temperature;
+            return CounterflowThermalModel.WallTemperature(!a.IsEmpty, a.Temperature, !b.IsEmpty, b.Temperature);
         }
 
         // Thermal conductivity of the third construction material. The finished building
         // keeps the chosen element per recipe slot on Deconstructable.constructionElements
-        // (this is how deconstruction returns the exact materials). Slot 2 is the insulator.
-        // Falls back to Ceramic with a warning rather than to zero, so a wrong read shows up
-        // in the log without silently making the shell perfect.
+        // (BuildingDef.Build fills it, one tag per slot in recipe order; deconstruction
+        // returns the exact materials from it). Slot 2 is the insulator.
+        //
+        // The array can only be short on a building from a pre-insulation version of the
+        // mod, which Deconstructable back-fills with the primary element alone; those saves
+        // are unsupported (decision 2026-09-16). The remaining guard is against an engine
+        // change, not a save. It logs an error and uses the metal's conductivity, so a
+        // broken read shows up as a hot shell in the log and in play rather than as a
+        // plausible insulated one.
         private float InsulatorConductivity()
         {
             Deconstructable dec = GetComponent<Deconstructable>();
             Tag[] chosen = dec != null ? dec.constructionElements : null;
-            if (chosen != null && chosen.Length > 2)
+            Element ins = chosen != null && chosen.Length > 2 ? ElementLoader.GetElement(chosen[2]) : null;
+            if (ins == null)
             {
-                Element ins = ElementLoader.GetElement(chosen[2]);
-                if (ins != null)
-                {
-                    if (DebugLog)
-                    {
-                        Debug.Log($"[PCHX] insulator={ins.id} k={ins.thermalConductivity} Gshell={ins.thermalConductivity * ShellFactor:G4}W/K");
-                    }
-                    return ins.thermalConductivity;
-                }
+                Debug.LogError($"[PCHX] insulator slot missing on {name} ({(chosen == null ? "no" : chosen.Length.ToString())} construction elements); shell uses the metal's conductivity");
+                return construction.Element.thermalConductivity;
             }
-            Debug.LogWarning("[PCHX] could not read the insulator material; assuming Ceramic");
-            return FallbackInsulatorConductivity;
+            if (DebugLog)
+            {
+                Debug.Log($"[PCHX] insulator={ins.id} k={ins.thermalConductivity} Gshell={ins.thermalConductivity * ShellFactor:G4}W/K");
+            }
+            return ins.thermalConductivity;
         }
 
         // Each moving packet relaxes toward the body temperature through half the shell
@@ -440,7 +417,9 @@ namespace PlateCounterflowHeatExchanger
         }
 
         // Heat given to the body this tick (in Joules, negative values drawn from the body).
-        // Clamped so the packet cannot overshoot the body temperature.
+        // Element lookup and unit conversion happen here; the physics, including the clamp
+        // that stops the packet overshooting the body temperature, is in
+        // CounterflowThermalModel.ShellLoss.
         private static float ShellLoss(float dt, float g, float tBody, ref Packet p)
         {
             if (p.IsEmpty)
@@ -452,19 +431,9 @@ namespace PlateCounterflowHeatExchanger
             {
                 return 0f;
             }
-            float c = p.Mass * 1000f * e.specificHeatCapacity; // in J/K
-            if (c <= 0f)
-            {
-                return 0f;
-            }
-            float dT = p.Temperature - tBody;
-            float q = g * dt * dT;
-            float qMax = c * dT; // would bring the packet exactly to tBody
-            if (Mathf.Abs(q) > Mathf.Abs(qMax))
-            {
-                q = qMax;
-            }
-            p.Temperature -= q / c;
+            float c = CounterflowThermalModel.HeatCapacity(p.Mass, e.specificHeatCapacity);
+            float q = CounterflowThermalModel.ShellLoss(c, p.Temperature, tBody, g, dt, out float tNew);
+            p.Temperature = tNew;
             return q;
         }
 
@@ -507,7 +476,7 @@ namespace PlateCounterflowHeatExchanger
         // ---- Warnings ----
 
         // One warning per port with no pipe segment on it. HasConduit is the same test
-        // PlanTransfer uses to decide a stream cannot move, so warning and behavior agree.
+        // ConduitTransfer.Plan uses to decide a stream cannot move, so warning and behavior agree.
         // Port names in the status text follow the unrotated layout. The building is not
         // rotatable (rotation would swap direction of top and bottom flows, no obvious need).
         private void RefreshPortStatus(ConduitFlow flow)
@@ -605,82 +574,12 @@ namespace PlateCounterflowHeatExchanger
             return parts.Count == 0 ? (string)STRINGS.UI.PCHX.NO_DEPOSITS : string.Join(", ", parts);
         }
 
-        // Predict this tick's transfer on one stream by applying ConduitFlow.AddElement's own
-        // acceptance rule ahead of time. Returns an empty Packet when nothing will move.
-        private static Packet PlanTransfer(ConduitFlow flow, int inCell, int outCell)
-        {
-            Packet p = default;
-            if (!flow.HasConduit(inCell) || !flow.HasConduit(outCell))
-            {
-                return p;
-            }
-
-            ConduitFlow.ConduitContents src = flow.GetContents(inCell);
-            if (src.mass <= 0f)
-            {
-                return p;
-            }
-
-            // AddElement refuses a different element unless the output cell is empty.
-            ConduitFlow.ConduitContents dst = flow.GetContents(outCell);
-            if (dst.element != src.element && dst.element != SimHashes.Vacuum)
-            {
-                return p;
-            }
-
-            // AddElement caps at the output cell's free space (ConduitContents.GetEffectiveCapacity).
-            float capacity = MaxMass - dst.mass;
-            float mass = Mathf.Min(src.mass, capacity);
-            if (mass <= 0f)
-            {
-                return p;
-            }
-
-            p.Element = src.element;
-            p.Mass = mass;
-            p.SourceMass = mass;
-            p.Capacity = capacity;
-            p.Temperature = src.temperature;
-            p.DiseaseIdx = src.diseaseIdx;
-            // Disease rides along in proportion to the mass moved (same as ConduitBridge).
-            p.DiseaseCount = (int)(mass / src.mass * src.diseaseCount);
-            return p;
-        }
-
-        // Move the planned packet. Add to the output at its (possibly changed) temperature
-        // and mass, then remove the PLANNED mass from the input. The two differ by whatever
-        // fouling deposited or returned, so mass is conserved across fluid + deposit.
-        // Because PlanTransfer mirrored the acceptance rule, accepted should equal p.Mass. A
-        // shortfall means our prediction and the game's rule disagree, so log it.
-        // Returns the mass the output cell accepted (what actually moved this tick).
-        private static float Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
-        {
-            if (p.IsEmpty)
-            {
-                return 0f;
-            }
-            float accepted = flow.AddElement(
-                outCell, p.Element, p.Mass, p.Temperature, p.DiseaseIdx, p.DiseaseCount);
-            if (accepted > 0f)
-            {
-                flow.RemoveElement(inCell, p.SourceMass);
-            }
-            if (accepted < p.Mass - 0.001f)
-            {
-                Debug.LogWarning($"[PCHX] acceptance mismatch: planned {p.Mass:F3} kg, output took {accepted:F3} kg");
-            }
-            return accepted;
-        }
-
         // Counterflow heat exchange between the two moving packets for one tick, by the
         // ε-NTU method. Trades heat, never mass. Disease and element are untouched.
+        // This method owns the game side (element lookup, unit conversion, the readout
+        // field, the debug log); the physics is in CounterflowThermalModel.Exchange.
         private void ExchangeHeat(float dt, ref Packet a, ref Packet b, float conductance)
         {
-            if (conductance <= 0f)
-            {
-                return;
-            }
-
             Element elemA = ElementLoader.FindElementByHash(a.Element);
             Element elemB = ElementLoader.FindElementByHash(b.Element);
             if (elemA == null || elemB == null)
@@ -688,54 +587,20 @@ namespace PlateCounterflowHeatExchanger
                 return;
             }
 
-            // Heat-capacity rate of each stream this tick (energy per kelvin). Mass is in kg
-            // but the game's specific heat is per gram, so convert to keep units consistent
-            // with the conductance G.
-            float cA = a.Mass * 1000f * elemA.specificHeatCapacity;
-            float cB = b.Mass * 1000f * elemB.specificHeatCapacity;
-            if (cA <= 0f || cB <= 0f)
-            {
-                return;
-            }
+            float cA = CounterflowThermalModel.HeatCapacity(a.Mass, elemA.specificHeatCapacity);
+            float cB = CounterflowThermalModel.HeatCapacity(b.Mass, elemB.specificHeatCapacity);
 
-            float cMin = Mathf.Min(cA, cB);
-            float cMax = Mathf.Max(cA, cB);
-            float cr = cMin / cMax;
-            float ntu = conductance * dt / cMin;
-
-            // Counterflow effectiveness. The balanced case (cr = 1) is a removable
-            // singularity in the general formula, so handle it on its own.
-            float eps;
-            if (cr > 0.999f)
+            ExchangeResult r = CounterflowThermalModel.Exchange(cA, a.Temperature, cB, b.Temperature, conductance, dt);
+            if (!r.Exchanged)
             {
-                eps = ntu / (1f + ntu);
+                return; // as before: lastEffectiveness keeps its previous value
             }
-            else
-            {
-                float ex = Mathf.Exp(-ntu * (1f - cr));
-                eps = (1f - ex) / (1f - cr * ex);
-            }
-            eps = Mathf.Clamp01(eps);
-            lastEffectiveness = eps;
-
-            float tHot = Mathf.Max(a.Temperature, b.Temperature);
-            float tCold = Mathf.Min(a.Temperature, b.Temperature);
-            float q = eps * cMin * (tHot - tCold); // energy moved hot -> cold, >= 0
 
             float aIn = a.Temperature;
             float bIn = b.Temperature;
-
-            // Apply equal-and-opposite energy. The hot stream loses what the cold gains.
-            if (a.Temperature >= b.Temperature)
-            {
-                a.Temperature -= q / cA;
-                b.Temperature += q / cB;
-            }
-            else
-            {
-                a.Temperature += q / cA;
-                b.Temperature -= q / cB;
-            }
+            a.Temperature = r.TA;
+            b.Temperature = r.TB;
+            lastEffectiveness = r.Effectiveness;
 
             // Periodic sample (not just the first tick). The first packets through a freshly
             // filled pipe are usually partial, so they say little about full-flow behavior.
@@ -745,7 +610,7 @@ namespace PlateCounterflowHeatExchanger
                           $"foul={FoulingFraction() * 100f:F1}% depA={Fouling.TotalMass(depositA):F4}kg depB={Fouling.TotalMass(depositB):F4}kg " +
                           $"A={a.Mass:F3}kg {a.Element} {aIn:F1}K->{a.Temperature:F1}K " +
                           $"B={b.Mass:F3}kg {b.Element} {bIn:F1}K->{b.Temperature:F1}K " +
-                          $"cMin={cMin:F0} NTU={ntu:F3} Cr={cr:F3} eps={eps:F3} Q={q:F0}J");
+                          $"cMin={r.CMin:F0} NTU={r.Ntu:F3} Cr={r.CapacityRatio:F3} eps={r.Effectiveness:F3} Q={r.Heat:F0}J");
             }
         }
 
