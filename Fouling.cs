@@ -118,7 +118,9 @@ namespace PlateCounterflowHeatExchanger
         // Apply one tick of fouling for a moving packet. Adjusts the ledger and the packet's
         // mass so that mass is conserved. Whatever is deposited leaves the fluid, and whatever
         // shear strips off returns to it as the flowing element. The packet can never grow past
-        // its planned capacity, so the output cell still accepts it in full.
+        // its planned capacity, so the output cell still accepts it in full; when returned mass
+        // would overfill it, the packet is capped and SourceMass is lowered instead, so the
+        // difference stays in the input pipe for the next tick (bridge-style backing up).
         //
         // By design, shear scours only the flowing fluid's own byproduct. Fluids with no table
         // entry return early and never scour (a fouled exchanger cannot be flushed).
@@ -141,20 +143,30 @@ namespace PlateCounterflowHeatExchanger
 
             float net = deposition - removal;
 
-            // Never strip more than is there, never take more than the packet holds, and
-            // never return more than the output cell has room for.
             if (net < 0f)
             {
+                // Scour. Never strip more than is there, and never return more than the output
+                // cell could hold in total. The returned mass joins the packet. If that overfills
+                // the output cell, cap the packet at the room and lower SourceMass by the excess,
+                // so the input pipe keeps the difference for the next tick. Input loss plus
+                // deposit loss then equals the output gain exactly. (Until 2026-09-19 the scour
+                // itself was clamped to the room, so a full packet into an empty output cell
+                // never scoured and a deposit built at low flow never fell; review finding F2.)
                 net = Mathf.Max(net, -existing);
-                net = Mathf.Max(net, p.Mass - p.Capacity);
+                net = Mathf.Max(net, -p.Capacity);
+                float returned = -net;
+                float excess = Mathf.Max(0f, p.Mass + returned - p.Capacity);
+                p.SourceMass = Mathf.Max(0f, p.SourceMass - excess);
+                p.Mass = Mathf.Min(p.Mass + returned, p.Capacity);
             }
             else
             {
+                // Deposit. Never take more than the packet holds.
                 net = Mathf.Min(net, p.Mass);
+                p.Mass -= net;
             }
 
             ledger[spec.Byproduct] = existing + net;
-            p.Mass -= net;
         }
     }
 }

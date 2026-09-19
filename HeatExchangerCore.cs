@@ -302,6 +302,16 @@ namespace PlateCounterflowHeatExchanger
             Game.Instance.accumulators.Accumulate(flowAccumulatorA, movedA);
             Game.Instance.accumulators.Accumulate(flowAccumulatorB, movedB);
 
+            //    The exchange log line above only prints when both streams flow. Whole-packet
+            //    deposition (F1 rig) is a single-stream case, so log it here instead.
+            if (DebugLog)
+            {
+                if (a.IsEmpty && a.SourceMass > 0f)
+                    Debug.Log($"[PCHX] whole-packet deposit A: {a.SourceMass:F3}kg {a.Element} drained from input, 0 to output, depA={Fouling.TotalMass(depositA):F4}kg");
+                if (b.IsEmpty && b.SourceMass > 0f)
+                    Debug.Log($"[PCHX] whole-packet deposit B: {b.SourceMass:F3}kg {b.Element} drained from input, 0 to output, depB={Fouling.TotalMass(depositB):F4}kg");
+            }
+
             // 5. Animation: glints run while liquid moves through either stream.
             SetFlowAnim(movedA + movedB > 0f);
         }

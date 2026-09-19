@@ -73,28 +73,39 @@ namespace PlateCounterflowHeatExchanger
         // Move the planned packet. Add to the output at its (possibly changed) temperature
         // and mass, then remove the PLANNED mass from the input. The two differ by whatever
         // fouling deposited or returned, so mass is conserved across fluid + deposit.
+        // Fouling may deposit the whole packet, leaving Mass == 0 with SourceMass > 0. The
+        // input is still drained in that case; before 2026-09-18 Commit returned early on an
+        // empty packet and the deposit duplicated the input fluid (review finding F1).
         // Plan used the game's own acceptance rules, so accepted should equal p.Mass. If the
         // output takes less anyway, remove input mass in the same proportion, so a rule change
-        // in the game shrinks the transfer instead of destroying fluid, and log it.
-        // Returns the mass the output cell accepted (what actually moved this tick).
+        // in the game shrinks the transfer instead of destroying fluid, and log it. The
+        // fouling ledger was already updated for the full planned packet; that residual is
+        // accepted for this defensive path and is why the warning exists.
+        // Returns the mass the output cell accepted (what actually reached the output).
         public static float Commit(ConduitFlow flow, int inCell, int outCell, Packet p)
         {
+            if (p.SourceMass <= 0f)
+            {
+                return 0f;
+            }
             if (p.IsEmpty)
             {
+                // Whole packet deposited as fouling. Nothing reaches the output; the input
+                // still loses what Plan committed it to.
+                flow.RemoveElement(inCell, p.SourceMass);
                 return 0f;
             }
             float accepted = flow.AddElement(
                 outCell, p.Element, p.Mass, p.Temperature, p.DiseaseIdx, p.DiseaseCount);
-            if (accepted <= 0f)
-            {
-                return 0f;
-            }
-            float fraction = accepted / p.Mass;
+            float fraction = Mathf.Clamp01(accepted / p.Mass);
             if (fraction < 1f - 0.0001f)
             {
                 Debug.LogWarning($"[PCHX] acceptance mismatch: planned {p.Mass:F3} kg, output took {accepted:F3} kg; removing {fraction:P1} of the planned input");
             }
-            flow.RemoveElement(inCell, p.SourceMass * Mathf.Min(fraction, 1f));
+            if (fraction > 0f)
+            {
+                flow.RemoveElement(inCell, p.SourceMass * fraction);
+            }
             return accepted;
         }
     }
