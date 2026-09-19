@@ -99,9 +99,10 @@ namespace PlateCounterflowHeatExchanger
 
                 public static class PCHX_PHASECHANGERISK
                 {
-                    public static LocString NAME = "Output near phase change";
+                    public static LocString NAME = "Outlet near phase change";
                     public static LocString TOOLTIP =
                         "{Detail}\n\n" +
+                        "Temperatures are the outlet packet's, not the pipe's.\n" +
                         "Packets over 1 kg that freeze or boil inside a pipe break the pipe.\n" +
                         "Smaller packets pass through without changing state.\n" +
                         "Throttle a stream, or bring the other inlet closer in temperature.";

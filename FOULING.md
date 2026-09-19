@@ -57,11 +57,11 @@ The fouling model includes five temperature factors that scale deposition up or 
 
 | Mechanism | $f(T_\mathrm{wall})$ | Shape |
 |---|---|---|
-| biological | $1$ below 345 K (72 °C pasteurization), else $0$ | biofilm grows until pasteurized |
-| scaling | $\max(0, (T_\mathrm{wall} - 293)/80)$ | inverse-solubility salts, rises with $T_\mathrm{wall}$ |
+| biological | $\begin{cases} 1 & T_\mathrm{wall} \lt 345\ \mathrm{K} \\ 0 & T_\mathrm{wall} \ge 345\ \mathrm{K} \end{cases}$ |biofilm grows until pasteurized (~72 °C) |
+| scaling | $\begin{cases} 0 & T_\mathrm{wall} \le 293\ \mathrm{K} \\ (T_\mathrm{wall} - 293)/80 & T_\mathrm{wall} \gt 293\ \mathrm{K} \end{cases}$ | inverse-solubility salts; starts at 20 °C, reaches 1 at 100 °C, uncapped |
 | coking | $2^{(T_\mathrm{wall} - 373)/25}$ | Arrhenius stand-in, doubles every 25 K |
 | particulate | $1$ | suspended solids settle regardless of $T_\mathrm{wall}$ |
-| waxing | $\mathrm{clamp01}((323 - T_\mathrm{wall})/60)$ | wax deposits on a cold wall; full at −10 °C, none at 50 °C |
+| waxing | $\begin{cases} 1 & T_\mathrm{wall} \le 263\ \mathrm{K} \\ (323 - T_\mathrm{wall})/60 & 263\ \mathrm{K} \lt T_\mathrm{wall} \lt 323\ \mathrm{K} \\ 0 & T_\mathrm{wall} \ge 323\ \mathrm{K} \end{cases}$ | wax deposits on a cold wall (full at −10 °C, none at 50 °C) |
 
 ## Liquid classification
 Every liquid in the game's `elements/liquid.yaml` is classified. Where the yaml names a solid that the liquid leaves behind on boiling (`highTempTransitionOreId`), that solid is the byproduct. This mod silently accepts whatever the game already says comes out of the liquid. Ids in the table below are the yaml `elementId`, which may not match the liquid name in-game. Several DLC liquids display under a different name (Brackene = `Milk`, Ovolene = `FishMilk`, Nectar = `SugarWater`, Mucin = `Mucus`, Polluted Brine = `MurkyBrine`, and the `MilkFat` byproduct displays as Brackwax). Rates are kg deposit per kg fluid at $f(T_\mathrm{wall}) = 1$.
@@ -103,16 +103,16 @@ Waxing reference: Bott, *Fouling of Heat Exchangers* (1995), solidification foul
 ## Pacing
 At full 10 kg/s flow with $f(T_\mathrm{wall}) = 1$ the asymptotic deposit reduces to $\text{rate} \times \tau \times 10\ \mathrm{kg}$, so scaling every $\text{rate}$ up and $\tau$ down by the same factor speeds the whole system up without moving any equilibrium (see above, "Calibration").
 
-The current setting was determined by gameplay feel. A throttled copper brine loop reaches the 50% cleaning point in about 19 cycles. Brine at max 10 kg/s flow rate settles near 27% at a 322 K $T_\mathrm{wall}$ and never triggers a cleaning errand. A thermium exchanger on throttled
-brine fouls quickly, reaching 50% in about four cycles at 0.34 kg of deposit.
+The current setting was determined by gameplay feel. A throttled copper brine loop reaches the 50% cleaning point in about 19 cycles. Brine at max 10 kg/s flow rate settles near 27% at a 322 K $T_\mathrm{wall}$ from any starting deposit and never triggers a cleaning errand. A thermium exchanger on throttled brine fouls quickly, reaching 50% in about four cycles at 0.34 kg of deposit.
 
 ## Deliberate choices
 1. **Shear scours only the flowing fluid's own byproduct.** A petroleum packet strips sulfur, not the carbon a crude oil packet left. Mixed streams therefore level off near the sum of the individual asymptotes.
 2. **Non-fouling fluids do not scour.** A fouled exchanger cannot be flushed with water, and only a Duplicant cleaning errand empties the plates. At $\tau = 600$ s a full-flow flush would scrub them in about ten minutes. Scale and coke do not rinse off in reality either.
-3. **Deposit mass scoured off becomes the flowing element** (carbon back into crude, sulfur into petroleum). This is not realistic, but it is mass-conserving and feels better than spawning debris every tick.
-4. **The displayed fouling percent is the cleaning threshold.** It is a
+3. **Deposit mass scoured off becomes the flowing element.** This is not realistic, but it is mass-conserving and feels better than spawning debris every tick.
+4. **Scoured mass can back up at the input port.** The exchanger outputs at most 10 kg/s. If scouring would result in an output packet that exceeds 10 kg, the output is capped and the input pipe retains the difference for the next tick. This follows the bridge output priority rule, so it should feel familiar. Full flow always scours toward the equilibrium point, and the final state does not depend on the flow history.
+5. **The displayed fouling percent is the cleaning threshold.** It is a
 conductance ratio, so a thermium exchanger reads 50% at only 0.34 kg of deposit while its effectiveness has barely moved. Real plants clean on cleanliness factor too, and using the number the player sees keeps the gameplay trigger legible.
-5. **Which fluids foul is left to player discovery.** The building description and tooltip name only the fouling mechanisms.
+6. **Which fluids foul is left to player discovery.** The building description and tooltip name only the fouling mechanisms.
 
 ## Cleaning mechanics
 What the cleaning errand does:

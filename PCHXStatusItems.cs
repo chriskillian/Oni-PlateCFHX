@@ -15,7 +15,7 @@ namespace PlateCounterflowHeatExchanger
         public static StatusItem CleaningOrdered;
         public static StatusItem NeedsCleaning;      // yellow: past threshold, no order pending
         public static StatusItem[] NoPipe = new StatusItem[4]; // yellow, one per port (PortIndex order)
-        public static StatusItem PhaseChangeRisk;    // yellow: an outlet is near freezing/boiling
+        public static StatusItem PhaseChangeRisk;    // info: an outlet packet is near freezing/boiling (normal operation)
 
         // Add or remove a status item so that its presence matches `on`. `handle` is the
         // caller's saved Guid; RemoveStatusItem hands back Guid.Empty.
@@ -126,7 +126,7 @@ namespace PlateCounterflowHeatExchanger
 
             PhaseChangeRisk = new StatusItem(
                 "PCHX_PhaseChangeRisk", "BUILDING", "",
-                StatusItem.IconType.Exclamation, NotificationType.BadMinor,
+                StatusItem.IconType.Info, NotificationType.Neutral,
                 false, OverlayModes.None.ID);
             PhaseChangeRisk.resolveTooltipCallback = (str, data) =>
             {

@@ -129,6 +129,9 @@ namespace PlateCounterflowHeatExchanger
         // changes state in a pipe breaks it under the vanilla rule. Packets under 10% of
         // pipe capacity (1 kg) never change state in a pipe. We still warn on temperature
         // alone, since opening the valve would break the pipe. We warn, never clamp.
+        // The phase item is informational (Info icon, no notification): bringing a fluid
+        // close to a transition without crossing it is the exchanger's job, not a fault
+        // (decision 2026-09-19).
         // The sim transitions an element 3 K BEYOND its listed point and then rebounds 1.5 K
         // back toward it (Klei's latent-heat stand-in and anti-flicker hysteresis), so the
         // real lead time is PhaseMargin + 3 K: 2 K here gives 5 K of true headroom.
@@ -138,12 +141,25 @@ namespace PlateCounterflowHeatExchanger
         private readonly System.Guid[] noPipeStatus = new System.Guid[4]; // PortIndex order
         private System.Guid phaseStatus;
         private int phaseWarningTicks;
+        private PhaseState phaseA;
+        private PhaseState phaseB;
 
         // Index into PCHXStatusItems.NoPipe and noPipeStatus.
         private enum PortIndex { AIn = 0, AOut = 1, BIn = 2, BOut = 3 }
 
-        // Live text behind the phase warning, read by its status-item tooltip callback.
-        public string PhaseWarning { get; private set; } = "";
+        // What the phase status item knows about one outlet, captured on the conduit tick
+        // and formatted only when the tooltip renders (F7: no strings per tick).
+        private struct PhaseState
+        {
+            public bool Near;          // within PhaseMargin of a transition
+            public bool Boils;         // else freezes
+            public SimHashes Element;
+            public float Temperature;  // the outlet packet, not the pipe (see RefreshPhaseStatus)
+            public float Transition;   // the element's listed lowTemp or highTemp
+        }
+
+        // Text behind the phase status item, built on demand by its tooltip callback.
+        public string PhaseWarning => FormatPhaseWarning();
 
         protected override void OnSpawn()
         {
@@ -503,16 +519,19 @@ namespace PlateCounterflowHeatExchanger
             PCHXStatusItems.Toggle(selectable, PCHXStatusItems.NoPipe[i], missing, this, ref noPipeStatus[i]);
         }
 
-        // Outlet temperatures against the fluid's own transition points. The warning holds for
+        // Outlet temperatures against the fluid's own transition points. The item holds for
         // a few ticks after the last hit so a value hovering at the margin does not flicker.
+        // Judged on the outlet packet, not on the mixed contents of the output cell (F3,
+        // closed by design 2026-09-19): the packet is what the exchanger produced. Residual
+        // liquid warmed or chilled in a blocked pipe is the pipe's problem, as for any pipe.
         private void RefreshPhaseStatus(Packet a, Packet b)
         {
-            string wa = PhaseRisk(STRINGS.UI.PCHX.STREAM_A, a);
-            string wb = PhaseRisk(STRINGS.UI.PCHX.STREAM_B, b);
-            string warning = wa != null && wb != null ? wa + "\n" + wb : wa ?? wb;
-            if (warning != null)
+            PhaseState sa = PhaseRisk(a);
+            PhaseState sb = PhaseRisk(b);
+            if (sa.Near || sb.Near)
             {
-                PhaseWarning = warning;
+                phaseA = sa;
+                phaseB = sb;
                 phaseWarningTicks = PhaseWarningHoldTicks;
             }
             else if (phaseWarningTicks > 0)
@@ -522,22 +541,47 @@ namespace PlateCounterflowHeatExchanger
             PCHXStatusItems.Toggle(selectable, PCHXStatusItems.PhaseChangeRisk, phaseWarningTicks > 0, this, ref phaseStatus);
         }
 
-        private static string PhaseRisk(string stream, Packet p)
+        private static PhaseState PhaseRisk(Packet p)
         {
-            if (p.IsEmpty) return null;
+            PhaseState s = default;
+            if (p.IsEmpty) return s;
             Element e = ElementLoader.FindElementByHash(p.Element);
-            if (e == null) return null;
+            if (e == null) return s;
             if (p.Temperature <= e.lowTemp + PhaseMargin)
             {
-                return string.Format(STRINGS.UI.PCHX.PHASE_FREEZE, stream,
-                    GameUtil.GetFormattedTemperature(p.Temperature), e.name, GameUtil.GetFormattedTemperature(e.lowTemp));
+                s.Near = true;
+                s.Boils = false;
+                s.Transition = e.lowTemp;
             }
-            if (p.Temperature >= e.highTemp - PhaseMargin)
+            else if (p.Temperature >= e.highTemp - PhaseMargin)
             {
-                return string.Format(STRINGS.UI.PCHX.PHASE_BOIL, stream,
-                    GameUtil.GetFormattedTemperature(p.Temperature), e.name, GameUtil.GetFormattedTemperature(e.highTemp));
+                s.Near = true;
+                s.Boils = true;
+                s.Transition = e.highTemp;
             }
-            return null;
+            if (s.Near)
+            {
+                s.Element = p.Element;
+                s.Temperature = p.Temperature;
+            }
+            return s;
+        }
+
+        private string FormatPhaseWarning()
+        {
+            string wa = FormatPhase(STRINGS.UI.PCHX.STREAM_A, phaseA);
+            string wb = FormatPhase(STRINGS.UI.PCHX.STREAM_B, phaseB);
+            return wa != null && wb != null ? wa + "\n" + wb : wa ?? wb ?? "";
+        }
+
+        private static string FormatPhase(string stream, PhaseState s)
+        {
+            if (!s.Near) return null;
+            Element e = ElementLoader.FindElementByHash(s.Element);
+            string name = e != null ? e.name : s.Element.ToString();
+            string format = s.Boils ? STRINGS.UI.PCHX.PHASE_BOIL : STRINGS.UI.PCHX.PHASE_FREEZE;
+            return string.Format(format, stream,
+                GameUtil.GetFormattedTemperature(s.Temperature), name, GameUtil.GetFormattedTemperature(s.Transition));
         }
 
         // Empty both ledgers and hand back the deposits merged by byproduct, so the cleaner
