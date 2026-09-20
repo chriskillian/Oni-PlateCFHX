@@ -131,14 +131,36 @@ namespace PlateCounterflowHeatExchanger
             go.GetComponent<KPrefabID>().AddTag(GameTags.OverlayBehindConduits);
             StripVanillaPlumbing(go);
 
-            // Drives both streams, exchanges heat between them, and keeps the fouling ledgers.
+            // Drives both streams, exchanges heat between them, and owns the fouling deposits.
             HeatExchangerCore core = go.AddOrGet<HeatExchangerCore>();
             core.secondaryInputOffset = SecondaryInput;
             core.secondaryOutputOffset = SecondaryOutput;
 
+            // Fouling deposits, one Storage per stream side (TESTING.md decision 2026-09-16;
+            // DEPOSIT_TUNING.md). Real solid chunks, so the engine saves them, drops them on
+            // deconstruction and melt, and keeps their temperature. Sealed and insulated:
+            // hidden from the world, no disease exchange, thermally frozen while stored. No
+            // duplicant may fetch from them. The contents panel lists them per side. Capacity
+            // is per construction metal and is set by the core at spawn.
+            core.depositsA = AddDepositStorage(go, "PCHXDepositsA");
+            core.depositsB = AddDepositStorage(go, "PCHXDepositsB");
+
             // Cleaning errand. User-menu button, automatic trigger, and the duplicant
             // work that empties the ledgers into debris.
             go.AddOrGet<FoulingCleanWorkable>();
+        }
+
+        private static Storage AddDepositStorage(GameObject go, string id)
+        {
+            Storage storage = go.AddComponent<Storage>();
+            storage.storageID = new Tag(id);
+            storage.allowItemRemoval = false;
+            storage.showInUI = true;
+            // No descriptor lines: the game gives them no per-storage name, so two read alike.
+            // The fouling status tooltip already labels deposits by stream.
+            storage.showDescriptor = false;
+            storage.SetDefaultStoredItemModifiers(Storage.StandardInsulatedStorage);
+            return storage;
         }
     }
 }

@@ -16,8 +16,9 @@ namespace PlateCounterflowHeatExchanger
     // declares (ISecondaryInput/ISecondaryOutput) and registers with the network itself.
     //
     // Klei's serializer is OPT-IN: the attribute below says "save nothing unless marked",
-    // and the [Serialize] ledgers are the only saved state. Everything else is rebuilt in
-    // OnSpawn from the building.
+    // and this class saves nothing of its own. The fouling deposits live in two Storage
+    // components, which the engine serializes. Everything else is rebuilt in OnSpawn from
+    // the building.
     [SerializationConfig(MemberSerialization.OptIn)]
     public class HeatExchangerCore : KMonoBehaviour, ISecondaryInput, ISecondaryOutput
     {
@@ -91,16 +92,18 @@ namespace PlateCounterflowHeatExchanger
         private bool shellIdleReported;
         private int shellTicks;
 
-        // Fouling ledgers. Kilograms of deposit per byproduct element, one per stream side.
-        // SAVED. Thermal resistance is derived from these each tick (Fouling.ResistanceOf).
-        [Serialize]
-        private Dictionary<SimHashes, float> depositA = new Dictionary<SimHashes, float>();
-        [Serialize]
-        private Dictionary<SimHashes, float> depositB = new Dictionary<SimHashes, float>();
+        // Fouling deposits, one Storage per stream side, holding the byproducts as real solid
+        // chunks. Assigned by the building config on the prefab (WarpConduitSender wires its
+        // storages the same way); Unity keeps the sibling reference on each instance. The
+        // engine serializes the contents, drops them on deconstruction and melt (F5) and
+        // carries their temperature (F6). Not [Serialize]d here: the reference is prefab
+        // wiring, not state. Capacity is set in OnSpawn from the construction metal.
+        public Storage depositsA;
+        public Storage depositsB;
 
         // Diagnostic logging for calibration. true enables the [PCHX] calibration lines in
         // Player.log, one every LogEveryTicks conduit ticks (1 s each).
-        private static readonly bool DebugLog = true;    // readonly, not const, so `if (DebugLog)` compiles without an unreachable-code warning
+        private static readonly bool DebugLog = false;   // readonly, not const, so `if (DebugLog)` compiles without an unreachable-code warning
         private const int LogEveryTicks = 30;
         private int exchangeTicks;
 
@@ -204,9 +207,12 @@ namespace PlateCounterflowHeatExchanger
             shellConductance = InsulatorConductivity() * ShellFactor;
             structureTemperature = GameComps.StructureTemperatures.GetHandle(gameObject);
 
-            // Older saves (or a serializer that skipped the field) leave a ledger null.
-            depositA = depositA ?? new Dictionary<SimHashes, float>();
-            depositB = depositB ?? new Dictionary<SimHashes, float>();
+            // Deposit capacity: the mass at which conductance is 1% of clean, per metal
+            // (DEPOSIT_TUNING.md, decision 5A). Storage.capacityKg is advisory in the engine;
+            // Fouling.Apply enforces it.
+            float capacity = Fouling.CapacityFor(cleanConductance);
+            if (depositsA != null) depositsA.capacityKg = capacity;
+            if (depositsB != null) depositsB.capacityKg = capacity;
 
             // Drive flow in phase with the liquid conduit simulation. Note the conduit sim
             // ticks once per SECOND (ConduitFlow.TickRate). The solver moves pipe mass first
@@ -272,8 +278,10 @@ namespace PlateCounterflowHeatExchanger
 
             // 2. Foul: each moving packet deposits on (or scours) its side of the plates.
             //    The wall sits between the streams, so its temperature is estimated as the
-            //    mean of both inlets when both flow, or the single inlet otherwise.
+            //    mean of both inlets when both flow, or the single inlet otherwise. Coking
+            //    responds to the hot end instead, estimated as the hotter flowing inlet.
             float wall = WallTemperature(a, b);
+            float hotInlet = HotInletTemperature(a, b);
 
             //    If the plates reach or exceed the melting point, the building melts. Checked on
             //    inlet temperatures, before any exchange, and independent of insulation.
@@ -286,8 +294,8 @@ namespace PlateCounterflowHeatExchanger
                 return;
             }
 
-            Fouling.Apply(ref a, depositA, wall, dt);
-            Fouling.Apply(ref b, depositB, wall, dt);
+            Fouling.Apply(ref a, depositsA, wall, hotInlet, dt);
+            Fouling.Apply(ref b, depositsB, wall, hotInlet, dt);
 
             // 3. Exchange: trade heat between the two moving packets through the fouled
             //    wall. If either stream is stalled this tick, the other passes through
@@ -317,16 +325,6 @@ namespace PlateCounterflowHeatExchanger
             float movedB = ConduitTransfer.Commit(flow, secondaryInputCell, secondaryOutputCell, b);
             Game.Instance.accumulators.Accumulate(flowAccumulatorA, movedA);
             Game.Instance.accumulators.Accumulate(flowAccumulatorB, movedB);
-
-            //    The exchange log line above only prints when both streams flow. Whole-packet
-            //    deposition (F1 rig) is a single-stream case, so log it here instead.
-            if (DebugLog)
-            {
-                if (a.IsEmpty && a.SourceMass > 0f)
-                    Debug.Log($"[PCHX] whole-packet deposit A: {a.SourceMass:F3}kg {a.Element} drained from input, 0 to output, depA={Fouling.TotalMass(depositA):F4}kg");
-                if (b.IsEmpty && b.SourceMass > 0f)
-                    Debug.Log($"[PCHX] whole-packet deposit B: {b.SourceMass:F3}kg {b.Element} drained from input, 0 to output, depB={Fouling.TotalMass(depositB):F4}kg");
-            }
 
             // 5. Animation: glints run while liquid moves through either stream.
             SetFlowAnim(movedA + movedB > 0f);
@@ -369,6 +367,11 @@ namespace PlateCounterflowHeatExchanger
         private static float WallTemperature(Packet a, Packet b)
         {
             return CounterflowThermalModel.WallTemperature(!a.IsEmpty, a.Temperature, !b.IsEmpty, b.Temperature);
+        }
+
+        private static float HotInletTemperature(Packet a, Packet b)
+        {
+            return CounterflowThermalModel.HotInletTemperature(!a.IsEmpty, a.Temperature, !b.IsEmpty, b.Temperature);
         }
 
         // Thermal conductivity of the third construction material. The finished building
@@ -481,7 +484,7 @@ namespace PlateCounterflowHeatExchanger
         private float ActualConductance()
         {
             if (cleanConductance <= 0f) return 0f;
-            float r = 1f / cleanConductance + Fouling.ResistanceOf(depositA) + Fouling.ResistanceOf(depositB);
+            float r = 1f / cleanConductance + Fouling.ResistanceOf(depositsA) + Fouling.ResistanceOf(depositsB);
             return 1f / r;
         }
 
@@ -497,7 +500,7 @@ namespace PlateCounterflowHeatExchanger
         // same value, so the order fires exactly when the readout matches the threshold.
         public int FoulingPercent() => Mathf.RoundToInt(FoulingFraction() * 100f);
 
-        public float DepositMass() => Fouling.TotalMass(depositA) + Fouling.TotalMass(depositB);
+        public float DepositMass() => depositsA.MassStored() + depositsB.MassStored();
 
         // ---- Warnings ----
 
@@ -584,44 +587,48 @@ namespace PlateCounterflowHeatExchanger
                 GameUtil.GetFormattedTemperature(s.Temperature), name, GameUtil.GetFormattedTemperature(s.Transition));
         }
 
-        // Empty both ledgers and hand back the deposits merged by byproduct, so the cleaner
-        // can drop one chunk per material. Mass leaves the ledgers here and reappears as
-        // debris in the game. Deposits below 1g are lost.
-        public Dictionary<SimHashes, float> TakeDeposits()
+        // Drop both sides' deposits as debris at the given position, each chunk at its own
+        // temperature (F6). Chunks under minChunkMass are consumed rather than dropped, so a
+        // clean never litters the floor with gram-scale debris.
+        public void DropDeposits(Vector3 position, float minChunkMass)
         {
-            var taken = new Dictionary<SimHashes, float>();
-            MergeInto(taken, depositA);
-            MergeInto(taken, depositB);
-            depositA.Clear();
-            depositB.Clear();
-            return taken;
+            DropSide(depositsA, position, minChunkMass);
+            DropSide(depositsB, position, minChunkMass);
         }
 
-        private static void MergeInto(Dictionary<SimHashes, float> into, Dictionary<SimHashes, float> from)
+        private static void DropSide(Storage deposits, Vector3 position, float minChunkMass)
         {
-            foreach (KeyValuePair<SimHashes, float> kv in from)
+            if (deposits == null) return;
+            // Consume the small ones first. Walk a copy: consuming removes from the list.
+            foreach (GameObject item in new List<GameObject>(deposits.items))
             {
-                into.TryGetValue(kv.Key, out float have);
-                into[kv.Key] = have + kv.Value;
+                PrimaryElement pe = item != null ? item.GetComponent<PrimaryElement>() : null;
+                if (pe != null && pe.Mass < minChunkMass)
+                {
+                    deposits.ConsumeIgnoringDisease(item);
+                }
             }
+            deposits.DropAll(position);
         }
 
         // One line per stream for the status tooltip, e.g. "Stream A: 0.3 kg Salt".
         public string DescribeDeposits()
         {
-            return string.Format(STRINGS.UI.PCHX.DEPOSIT_LINE, STRINGS.UI.PCHX.STREAM_A, Describe(depositA)) + "\n" +
-                   string.Format(STRINGS.UI.PCHX.DEPOSIT_LINE, STRINGS.UI.PCHX.STREAM_B, Describe(depositB));
+            return string.Format(STRINGS.UI.PCHX.DEPOSIT_LINE, STRINGS.UI.PCHX.STREAM_A, Describe(depositsA)) + "\n" +
+                   string.Format(STRINGS.UI.PCHX.DEPOSIT_LINE, STRINGS.UI.PCHX.STREAM_B, Describe(depositsB));
         }
 
-        private static string Describe(Dictionary<SimHashes, float> ledger)
+        private static string Describe(Storage deposits)
         {
             var parts = new List<string>();
-            foreach (KeyValuePair<SimHashes, float> kv in ledger)
+            if (deposits != null)
             {
-                if (kv.Value < 0.001f) continue;
-                Element e = ElementLoader.FindElementByHash(kv.Key);
-                string name = e != null ? e.name : kv.Key.ToString();
-                parts.Add(GameUtil.GetFormattedMass(kv.Value) + " " + name);
+                foreach (GameObject item in deposits.items)
+                {
+                    PrimaryElement pe = item != null ? item.GetComponent<PrimaryElement>() : null;
+                    if (pe == null || pe.Mass < 0.001f) continue;
+                    parts.Add(GameUtil.GetFormattedMass(pe.Mass) + " " + pe.Element.name);
+                }
             }
             // Explicit cast. LocString converts implicitly both to and from string, which
             // leaves a conditional expression with no single type to pick.
@@ -661,7 +668,7 @@ namespace PlateCounterflowHeatExchanger
             if (DebugLog && exchangeTicks++ % LogEveryTicks == 0)
             {
                 Debug.Log($"[PCHX] exchange #{exchangeTicks}: dt={dt:F3}s Gclean={cleanConductance:F0} G={conductance:F0} " +
-                          $"foul={FoulingFraction() * 100f:F1}% depA={Fouling.TotalMass(depositA):F4}kg depB={Fouling.TotalMass(depositB):F4}kg " +
+                          $"foul={FoulingFraction() * 100f:F1}% depA={depositsA.MassStored():F4}kg depB={depositsB.MassStored():F4}kg " +
                           $"A={a.Mass:F3}kg {a.Element} {aIn:F1}K->{a.Temperature:F1}K " +
                           $"B={b.Mass:F3}kg {b.Element} {bIn:F1}K->{b.Temperature:F1}K " +
                           $"cMin={r.CMin:F0} NTU={r.Ntu:F3} Cr={r.CapacityRatio:F3} eps={r.Effectiveness:F3} Q={r.Heat:F0}J");

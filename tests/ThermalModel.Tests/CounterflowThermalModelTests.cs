@@ -329,5 +329,19 @@ namespace PlateCounterflowHeatExchanger.Tests
             Assert.Equal(350f, CounterflowThermalModel.WallTemperature(true, 350f, false, 300f));
             Assert.Equal(300f, CounterflowThermalModel.WallTemperature(false, 350f, true, 300f));
         }
+
+        [Fact]
+        public void HotInletTemperature_BothFlowing_IsHotterInlet()
+        {
+            Assert.Equal(350f, CounterflowThermalModel.HotInletTemperature(true, 350f, true, 300f));
+            Assert.Equal(350f, CounterflowThermalModel.HotInletTemperature(true, 300f, true, 350f));
+        }
+
+        [Fact]
+        public void HotInletTemperature_OneFlowing_IsThatInlet()
+        {
+            Assert.Equal(350f, CounterflowThermalModel.HotInletTemperature(true, 350f, false, 300f));
+            Assert.Equal(300f, CounterflowThermalModel.HotInletTemperature(false, 350f, true, 300f));
+        }
     }
 }

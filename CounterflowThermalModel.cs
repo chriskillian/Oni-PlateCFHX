@@ -130,6 +130,17 @@ namespace PlateCounterflowHeatExchanger
             return tB;
         }
 
+        // Hotter flowing inlet, or the single flowing inlet. This is the hot-end plate
+        // temperature of a counterflow exchanger, which the mean hides; coking responds to
+        // it (FOULING.md; DEPOSIT_TUNING.md, decision 1C). Same convention as WallTemperature
+        // when neither flows.
+        public static float HotInletTemperature(bool aFlowing, float tA, bool bFlowing, float tB)
+        {
+            if (aFlowing && bFlowing) return tA > tB ? tA : tB;
+            if (aFlowing) return tA;
+            return tB;
+        }
+
         private static float Clamp01(float v)
         {
             if (v < 0f) return 0f;

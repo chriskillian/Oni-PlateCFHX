@@ -212,16 +212,10 @@ namespace PlateCounterflowHeatExchanger
             core.FlowBlocked = false;
             core.SetCleaningAnim(false); // also reached via OnStopWork; idempotent
 
-            // Deposits become debris at the building's temperature, one chunk per material.
-            float temperature = GetComponent<PrimaryElement>().Temperature;
+            // Deposits become debris, each chunk at its own stored temperature (F6), one chunk
+            // per material per side. Chunks under MinChunkMass are consumed, not dropped.
             Vector3 position = Grid.CellToPosCCC(Grid.PosToCell(this), Grid.SceneLayer.Ore);
-            foreach (KeyValuePair<SimHashes, float> kv in core.TakeDeposits())
-            {
-                if (kv.Value < MinChunkMass) continue;
-                Element element = ElementLoader.FindElementByHash(kv.Key);
-                if (element == null) continue;
-                element.substance.SpawnResource(position, kv.Value, temperature, byte.MaxValue, 0);
-            }
+            core.DropDeposits(position, MinChunkMass);
 
             autoArmed = true;
             Chore = null;
